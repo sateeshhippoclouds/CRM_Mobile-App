@@ -2,9 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:stacked/stacked.dart';
 
 import 'company_tasks_viewmodel.dart';
+import 'crm_widgets.dart';
 
-class CompanyTasksView extends StatelessWidget {
+class CompanyTasksView extends StatefulWidget {
   const CompanyTasksView({super.key});
+
+  @override
+  State<CompanyTasksView> createState() => _CompanyTasksViewState();
+}
+
+class _CompanyTasksViewState extends State<CompanyTasksView> {
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,37 +27,42 @@ class CompanyTasksView extends StatelessWidget {
       onViewModelReady: (m) => m.init(),
       builder: (context, model, child) {
         return Scaffold(
-          backgroundColor: const Color(0xffF5F5F7),
-          appBar: AppBar(
-            backgroundColor: const Color(0xff3756DF),
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: const Text('Tasks',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18)),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.add, color: Colors.white),
-                onPressed: () {},
-              ),
-            ],
-          ),
+          backgroundColor: kCrmBg,
+          appBar: crmAppBar('Tasks', actions: [
+            IconButton(
+              icon: const Icon(Icons.add, color: Colors.white),
+              onPressed: () {},
+            ),
+          ]),
           body: model.isBusy
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xff3756DF)))
-              : model.items.isEmpty
-                  ? const _EmptyState(
-                      icon: Icons.task_alt_rounded,
-                      label: 'No tasks yet',
-                      sub: 'Create your first task',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: model.items.length,
-                      itemBuilder: (_, i) =>
-                          _TaskCard(item: model.items[i]),
+                  child: CircularProgressIndicator(color: kCrmBlue))
+              : model.fetchError != null
+                  ? CrmErrorBody(
+                      error: model.fetchError!, onRetry: model.init)
+                  : Column(
+                      children: [
+                        CrmSearchBar(
+                          controller: _searchCtrl,
+                          hint: 'Search by Title or Assignee...',
+                          onChanged: model.search,
+                        ),
+                        Expanded(
+                          child: model.items.isEmpty
+                              ? const CrmEmptyState(
+                                  icon: Icons.task_alt_rounded,
+                                  title: 'No Tasks Found',
+                                  subtitle: 'Create your first task to get started',
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      0, 10, 0, 16),
+                                  itemCount: model.items.length,
+                                  itemBuilder: (_, i) =>
+                                      _TaskCard(item: model.items[i]),
+                                ),
+                        ),
+                      ],
                     ),
         );
       },
@@ -57,53 +76,65 @@ class _TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
-      ),
-      child: Text(item.toString()),
-    );
-  }
-}
+    final title = sv(item, 'title');
+    final relatedTo = sv(item, 'related_to', '');
+    final assignedTo = sv(item, 'assigned_to', '');
+    final dueDate = sv(item, 'due_date', '');
+    final startDate = sv(item, 'start_date', '');
+    final priority = sv(item, 'priority', '');
+    final taskType = sv(item, 'task_type', '');
+    final notes = sv(item, 'notes', '');
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState(
-      {required this.icon, required this.label, required this.sub});
-  final IconData icon;
-  final String label, sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
+    return CrmCard(
+      onTap: () {},
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xffEEF1FB),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: Icon(icon, size: 40, color: const Color(0xff3756DF)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff1A1F36))),
+              ),
+              const SizedBox(width: 8),
+              if (priority.isNotEmpty) CrmBadge(priority),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff1A1F36))),
           const SizedBox(height: 6),
-          Text(sub,
-              style: const TextStyle(fontSize: 13, color: Color(0xff8E9BB5))),
+          if (relatedTo.isNotEmpty || taskType.isNotEmpty)
+            Row(
+              children: [
+                if (relatedTo.isNotEmpty)
+                  Expanded(
+                    child: CrmInfoRow('Related', relatedTo,
+                        icon: Icons.link_rounded),
+                  ),
+                if (taskType.isNotEmpty) CrmBadge(taskType),
+              ],
+            ),
+          if (assignedTo.isNotEmpty)
+            CrmInfoRow('Assigned', assignedTo, icon: Icons.person_outline),
+          if (startDate.isNotEmpty || dueDate.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: CrmDividerRow([
+                if (startDate.isNotEmpty) CrmStat('Start Date', startDate),
+                if (dueDate.isNotEmpty) CrmStat('Due Date', dueDate),
+              ]),
+            ),
+          if (notes.isNotEmpty && notes != 'Not ment' && notes != '—')
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(notes,
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xff6B7280)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+            ),
         ],
       ),
     );

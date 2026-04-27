@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:stacked/stacked.dart';
 
 import 'company_others_viewmodel.dart';
+import 'masters_widgets.dart';
 
 class CompanyOthersView extends StatelessWidget {
   const CompanyOthersView({super.key});
@@ -18,93 +19,71 @@ class CompanyOthersView extends StatelessWidget {
             backgroundColor: const Color(0xff3756DF),
             elevation: 0,
             iconTheme: const IconThemeData(color: Colors.white),
-            title: const Text('Masters › Others',
+            title: const Text('Others',
                 style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
                     fontSize: 18)),
-            actions: [
-              IconButton(
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  onPressed: () {}),
-            ],
           ),
           body: model.isBusy
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xff3756DF)))
-              : model.items.isEmpty
-                  ? const _EmptyState(
-                      icon: Icons.category_rounded,
-                      label: 'No entries',
-                      sub: 'Add other master entries here',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: model.items.length,
-                      itemBuilder: (_, i) =>
-                          _OtherCard(item: model.items[i]),
+                  child:
+                      CircularProgressIndicator(color: Color(0xff3756DF)))
+              : model.fetchError != null
+                  ? MasterErrorBody(
+                      error: model.fetchError!, onRetry: model.init)
+                  : DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          Container(
+                            color: Colors.white,
+                            child: const TabBar(
+                              labelColor: Color(0xff3756DF),
+                              unselectedLabelColor: Color(0xff6B7280),
+                              indicatorColor: Color(0xff3756DF),
+                              labelStyle: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12),
+                              unselectedLabelStyle:
+                                  TextStyle(fontSize: 12),
+                              tabs: [
+                                Tab(text: 'PRIORITY'),
+                                Tab(text: 'SERVICE CATEGORY'),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                MasterSimpleTab(
+                                  items: model.priorities,
+                                  columnLabel: 'Task Priority',
+                                  hintText: 'Add Task Priority',
+                                  onAdd: (v) => model.addItem(1, v),
+                                  onEdit: (id, v) =>
+                                      model.editItem(id, 1, v),
+                                  onDelete: (id) =>
+                                      model.deleteItem(id, 1),
+                                ),
+                                MasterSimpleTab(
+                                  items: model.serviceCategories,
+                                  columnLabel: 'Service Category',
+                                  hintText: 'Add Service Category',
+                                  onAdd: (v) => model.addItem(2, v),
+                                  onEdit: (id, v) =>
+                                      model.editItem(id, 2, v),
+                                  onDelete: (id) =>
+                                      model.deleteItem(id, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
         );
       },
-    );
-  }
-}
-
-class _OtherCard extends StatelessWidget {
-  const _OtherCard({required this.item});
-  final Map<String, dynamic> item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
-      ),
-      child: Text(item.toString()),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState(
-      {required this.icon, required this.label, required this.sub});
-  final IconData icon;
-  final String label, sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xffEEF1FB),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: Icon(icon, size: 40, color: const Color(0xff3756DF)),
-          ),
-          const SizedBox(height: 16),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff1A1F36))),
-          const SizedBox(height: 6),
-          Text(sub,
-              style: const TextStyle(fontSize: 13, color: Color(0xff8E9BB5))),
-        ],
-      ),
     );
   }
 }

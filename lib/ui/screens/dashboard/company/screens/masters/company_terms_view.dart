@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:stacked/stacked.dart';
 
 import 'company_terms_viewmodel.dart';
+import 'masters_widgets.dart';
 
 class CompanyTermsView extends StatelessWidget {
   const CompanyTermsView({super.key});
@@ -18,93 +19,71 @@ class CompanyTermsView extends StatelessWidget {
             backgroundColor: const Color(0xff3756DF),
             elevation: 0,
             iconTheme: const IconThemeData(color: Colors.white),
-            title: const Text('Masters › Terms',
+            title: const Text('CRM',
                 style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
                     fontSize: 18)),
-            actions: [
-              IconButton(
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  onPressed: () {}),
-            ],
           ),
           body: model.isBusy
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xff3756DF)))
-              : model.items.isEmpty
-                  ? const _EmptyState(
-                      icon: Icons.description_rounded,
-                      label: 'No terms',
-                      sub: 'Add terms and conditions entries here',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: model.items.length,
-                      itemBuilder: (_, i) =>
-                          _TermsCard(item: model.items[i]),
+                  child:
+                      CircularProgressIndicator(color: Color(0xff3756DF)))
+              : model.fetchError != null
+                  ? MasterErrorBody(
+                      error: model.fetchError!, onRetry: model.init)
+                  : DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          Container(
+                            color: Colors.white,
+                            child: const TabBar(
+                              labelColor: Color(0xff3756DF),
+                              unselectedLabelColor: Color(0xff6B7280),
+                              indicatorColor: Color(0xff3756DF),
+                              labelStyle: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12),
+                              unselectedLabelStyle:
+                                  TextStyle(fontSize: 12),
+                              tabs: [
+                                Tab(text: 'FOLLOWUP TERMS'),
+                                Tab(text: 'CLIENT TERMS'),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                MasterTermsTab(
+                                  items: model.followupQuotations,
+                                  addButtonLabel: 'ADD FOLLOWUP QUOTATION',
+                                  onAdd: (title, notes) =>
+                                      model.addItem(1, title, notes),
+                                  onEdit: (id, title, notes) =>
+                                      model.editItem(id, 1, title, notes),
+                                  onDelete: (id) =>
+                                      model.deleteItem(id, 1),
+                                ),
+                                MasterTermsTab(
+                                  items: model.clientQuotations,
+                                  addButtonLabel: 'ADD CLIENT TERMS',
+                                  onAdd: (title, notes) =>
+                                      model.addItem(2, title, notes),
+                                  onEdit: (id, title, notes) =>
+                                      model.editItem(id, 2, title, notes),
+                                  onDelete: (id) =>
+                                      model.deleteItem(id, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
         );
       },
-    );
-  }
-}
-
-class _TermsCard extends StatelessWidget {
-  const _TermsCard({required this.item});
-  final Map<String, dynamic> item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
-      ),
-      child: Text(item.toString()),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState(
-      {required this.icon, required this.label, required this.sub});
-  final IconData icon;
-  final String label, sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xffEEF1FB),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: Icon(icon, size: 40, color: const Color(0xff3756DF)),
-          ),
-          const SizedBox(height: 16),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff1A1F36))),
-          const SizedBox(height: 6),
-          Text(sub,
-              style: const TextStyle(fontSize: 13, color: Color(0xff8E9BB5))),
-        ],
-      ),
     );
   }
 }

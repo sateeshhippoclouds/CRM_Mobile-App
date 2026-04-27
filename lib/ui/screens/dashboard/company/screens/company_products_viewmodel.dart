@@ -1,12 +1,39 @@
 import 'package:stacked/stacked.dart';
 
+import '../../../../../app/app.locator.dart';
+import '../../../../../services/api_services.dart';
+
 class CompanyProductsViewModel extends BaseViewModel {
-  List<Map<String, dynamic>> items = [];
+  final _api = locator<HippoAuthService>();
+
+  List<Map<String, dynamic>> _all = [];
+  String _query = '';
   String? fetchError;
+  bool _loaded = false;
+
+  List<Map<String, dynamic>> get items => _query.isEmpty
+      ? _all
+      : _all.where((p) {
+          final q = _query;
+          return (p['service_name'] ?? '').toString().toLowerCase().contains(q) ||
+              (p['category'] ?? '').toString().toLowerCase().contains(q);
+        }).toList();
+
+  void search(String q) {
+    _query = q.toLowerCase().trim();
+    notifyListeners();
+  }
 
   Future<void> init() async {
-    setBusy(true);
+    if (!_loaded) setBusy(true);
     fetchError = null;
-    setBusy(false);
+    try {
+      _all = await _api.getProducts();
+      _loaded = true;
+    } catch (e) {
+      if (!_loaded) fetchError = e.toString().replaceFirst('Exception: ', '');
+    } finally {
+      setBusy(false);
+    }
   }
 }

@@ -2,9 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:stacked/stacked.dart';
 
 import 'company_products_viewmodel.dart';
+import 'crm_widgets.dart';
 
-class CompanyProductsView extends StatelessWidget {
+class CompanyProductsView extends StatefulWidget {
   const CompanyProductsView({super.key});
+
+  @override
+  State<CompanyProductsView> createState() => _CompanyProductsViewState();
+}
+
+class _CompanyProductsViewState extends State<CompanyProductsView> {
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,37 +27,42 @@ class CompanyProductsView extends StatelessWidget {
       onViewModelReady: (m) => m.init(),
       builder: (context, model, child) {
         return Scaffold(
-          backgroundColor: const Color(0xffF5F5F7),
-          appBar: AppBar(
-            backgroundColor: const Color(0xff3756DF),
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: const Text('Products',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18)),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.add, color: Colors.white),
-                onPressed: () {},
-              ),
-            ],
-          ),
+          backgroundColor: kCrmBg,
+          appBar: crmAppBar('Products', actions: [
+            IconButton(
+              icon: const Icon(Icons.add, color: Colors.white),
+              onPressed: () {},
+            ),
+          ]),
           body: model.isBusy
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xff3756DF)))
-              : model.items.isEmpty
-                  ? const _EmptyState(
-                      icon: Icons.inventory_2_rounded,
-                      label: 'No products yet',
-                      sub: 'Add your first product',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: model.items.length,
-                      itemBuilder: (_, i) =>
-                          _ProductCard(item: model.items[i]),
+                  child: CircularProgressIndicator(color: kCrmBlue))
+              : model.fetchError != null
+                  ? CrmErrorBody(
+                      error: model.fetchError!, onRetry: model.init)
+                  : Column(
+                      children: [
+                        CrmSearchBar(
+                          controller: _searchCtrl,
+                          hint: 'Search services...',
+                          onChanged: model.search,
+                        ),
+                        Expanded(
+                          child: model.items.isEmpty
+                              ? const CrmEmptyState(
+                                  icon: Icons.inventory_2_outlined,
+                                  title: 'No Products Found',
+                                  subtitle: 'Add your first product or service',
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      0, 10, 0, 16),
+                                  itemCount: model.items.length,
+                                  itemBuilder: (_, i) =>
+                                      _ProductCard(item: model.items[i]),
+                                ),
+                        ),
+                      ],
                     ),
         );
       },
@@ -57,53 +76,53 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
-      ),
-      child: Text(item.toString()),
-    );
-  }
-}
+    final name = sv(item, 'service_name');
+    final category = sv(item, 'category', '');
+    final duration = sv(item, 'duration', '');
+    final basePrice = sv(item, 'base_price', '');
+    final taxRate = sv(item, 'tax_rate', '');
+    final total = sv(item, 'total_amount', '');
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState(
-      {required this.icon, required this.label, required this.sub});
-  final IconData icon;
-  final String label, sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
+    return CrmCard(
+      onTap: () {},
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xffEEF1FB),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: Icon(icon, size: 40, color: const Color(0xff3756DF)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff1A1F36))),
+              ),
+              if (category.isNotEmpty) CrmBadge(category),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff1A1F36))),
-          const SizedBox(height: 6),
-          Text(sub,
-              style: const TextStyle(fontSize: 13, color: Color(0xff8E9BB5))),
+          if (duration.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.access_time_outlined,
+                      size: 13, color: Color(0xff6B7280)),
+                  const SizedBox(width: 4),
+                  Text('$duration days',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xff6B7280))),
+                ],
+              ),
+            ),
+          if (basePrice.isNotEmpty || taxRate.isNotEmpty || total.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: CrmDividerRow([
+                if (basePrice.isNotEmpty) CrmStat('Base Price', '₹$basePrice'),
+                if (taxRate.isNotEmpty) CrmStat('Tax Rate', '$taxRate%'),
+                if (total.isNotEmpty) CrmStat('Total', '₹$total'),
+              ]),
+            ),
         ],
       ),
     );

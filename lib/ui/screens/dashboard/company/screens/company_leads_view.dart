@@ -2,9 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:stacked/stacked.dart';
 
 import 'company_leads_viewmodel.dart';
+import 'crm_widgets.dart';
 
-class CompanyLeadsView extends StatelessWidget {
+class CompanyLeadsView extends StatefulWidget {
   const CompanyLeadsView({super.key});
+
+  @override
+  State<CompanyLeadsView> createState() => _CompanyLeadsViewState();
+}
+
+class _CompanyLeadsViewState extends State<CompanyLeadsView> {
+  final _leadsCtrl = TextEditingController();
+  final _followupsCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _leadsCtrl.dispose();
+    _followupsCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,72 +29,79 @@ class CompanyLeadsView extends StatelessWidget {
       onViewModelReady: (m) => m.init(),
       builder: (context, model, child) {
         return Scaffold(
-          backgroundColor: const Color(0xffF5F5F7),
-          appBar: AppBar(
-            backgroundColor: const Color(0xff3756DF),
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: const Text('Leads',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18)),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.add, color: Colors.white),
-                onPressed: () {},
-              ),
-            ],
-          ),
+          backgroundColor: kCrmBg,
+          appBar: crmAppBar('Leads', actions: [
+            IconButton(
+              icon: const Icon(Icons.add, color: Colors.white),
+              onPressed: () {},
+            ),
+          ]),
           body: model.isBusy
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xff3756DF)))
-              : _LeadsBody(model: model),
+                  child: CircularProgressIndicator(color: kCrmBlue))
+              : model.fetchError != null
+                  ? CrmErrorBody(
+                      error: model.fetchError!, onRetry: model.init)
+                  : DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          Container(
+                            color: Colors.white,
+                            child: crmTabBar(
+                                const ['LEADS', 'FOLLOW-UPS']),
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                _LeadsTab(
+                                  model: model,
+                                  controller: _leadsCtrl,
+                                ),
+                                _FollowupsTab(
+                                  model: model,
+                                  controller: _followupsCtrl,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
         );
       },
     );
   }
 }
 
-class _LeadsBody extends StatelessWidget {
-  const _LeadsBody({required this.model});
+// ── Leads Tab ─────────────────────────────────────────────────────────────────
+
+class _LeadsTab extends StatelessWidget {
+  const _LeadsTab({required this.model, required this.controller});
   final CompanyLeadsViewModel model;
+  final TextEditingController controller;
 
   @override
   Widget build(BuildContext context) {
+    final items = model.leads;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: 'Search leads...',
-              hintStyle:
-                  const TextStyle(color: Color(0xff9E9E9E), fontSize: 14),
-              prefixIcon:
-                  const Icon(Icons.search, color: Color(0xff9E9E9E)),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
+        CrmSearchBar(
+          controller: controller,
+          hint: 'Search by Lead Name, Email, or City...',
+          onChanged: model.searchLeads,
         ),
         Expanded(
-          child: model.items.isEmpty
-              ? const _EmptyState(
+          child: items.isEmpty
+              ? const CrmEmptyState(
                   icon: Icons.bar_chart_rounded,
-                  label: 'No leads yet',
-                  sub: 'Add your first lead to get started',
+                  title: 'No Leads Found',
+                  subtitle: 'Add your first lead to get started',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: model.items.length,
-                  itemBuilder: (_, i) => _ItemCard(item: model.items[i]),
+                  padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => _LeadCard(item: items[i]),
                 ),
         ),
       ],
@@ -86,60 +109,135 @@ class _LeadsBody extends StatelessWidget {
   }
 }
 
-class _ItemCard extends StatelessWidget {
-  const _ItemCard({required this.item});
+class _LeadCard extends StatelessWidget {
+  const _LeadCard({required this.item});
   final Map<String, dynamic> item;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+    final name = sv(item, 'lead_name');
+    final contact = sv(item, 'contact_person');
+    final phone = sv(item, 'phone');
+    final email = sv(item, 'email');
+    final source = sv(item, 'source', '');
+    final city = sv(item, 'city', '');
+    final address = sv(item, 'address', '');
+
+    return CrmCard(
+      onTap: () {},
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: kCrmBlue)),
+              ),
+              if (source.isNotEmpty) CrmBadge(source),
+            ],
+          ),
+          if (contact != '—') CrmInfoRow('Contact', contact, icon: Icons.person_outline),
+          if (phone != '—') CrmInfoRow('Phone', phone, icon: Icons.phone_outlined),
+          if (email != '—') CrmInfoRow('Email', email, icon: Icons.email_outlined),
+          if (city.isNotEmpty || address.isNotEmpty)
+            CrmInfoRow(
+              'Location',
+              [city, address].where((s) => s.isNotEmpty).join(', '),
+              icon: Icons.location_on_outlined,
+            ),
         ],
       ),
-      child: Text(item.toString()),
     );
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState(
-      {required this.icon, required this.label, required this.sub});
-  final IconData icon;
-  final String label, sub;
+// ── Follow-ups Tab ────────────────────────────────────────────────────────────
+
+class _FollowupsTab extends StatelessWidget {
+  const _FollowupsTab({required this.model, required this.controller});
+  final CompanyLeadsViewModel model;
+  final TextEditingController controller;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final items = model.followups;
+    return Column(
+      children: [
+        CrmSearchBar(
+          controller: controller,
+          hint: 'Search by Lead Name, Status...',
+          onChanged: model.searchFollowups,
+        ),
+        Expanded(
+          child: items.isEmpty
+              ? const CrmEmptyState(
+                  icon: Icons.follow_the_signs_rounded,
+                  title: 'No Follow-ups Found',
+                  subtitle: 'Follow-ups will appear here',
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => _FollowupCard(item: items[i]),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FollowupCard extends StatelessWidget {
+  const _FollowupCard({required this.item});
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = sv(item, 'lead_name');
+    final assigned = sv(item, 'assigned_to', '');
+    final status = sv(item, 'status', '');
+    final service = sv(item, 'service_name', '');
+    final duration = sv(item, 'duration', '');
+
+    return CrmCard(
+      onTap: () {},
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xffEEF1FB),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: Icon(icon, size: 40, color: const Color(0xff3756DF)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xff1A1F36))),
+              ),
+              if (status.isNotEmpty) CrmBadge(status),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff1A1F36))),
-          const SizedBox(height: 6),
-          Text(sub,
-              style: const TextStyle(
-                  fontSize: 13, color: Color(0xff8E9BB5))),
+          if (assigned.isNotEmpty)
+            CrmInfoRow('Assigned', assigned, icon: Icons.person_outline),
+          if (service.isNotEmpty || duration.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  if (service.isNotEmpty)
+                    Expanded(
+                      child: CrmInfoRow('Service', service,
+                          icon: Icons.miscellaneous_services_outlined),
+                    ),
+                  if (duration.isNotEmpty)
+                    CrmBadge('$duration days',
+                        bg: const Color(0xffEEF1FB),
+                        fg: kCrmBlue),
+                ],
+              ),
+            ),
         ],
       ),
     );
