@@ -35,7 +35,10 @@ class LoginViewModel extends BaseViewModel {
 
     try {
       final user = await _hippoAuthService.login(email.trim(), password.trim());
-      navigationService.clearStackAndShow(Routes.dashboardRoute(user.userType));
+      final route = user.platformOwner
+          ? Routes.ceoDashboardView
+          : Routes.companyDashboardView;
+      navigationService.clearStackAndShow(route);
     } catch (_) {
       _errorMessage = 'Invalid email or password. Please try again.';
       notifyListeners();

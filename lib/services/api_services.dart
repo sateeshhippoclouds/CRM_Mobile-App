@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/permissions_model.dart';
 import '../models/subscription_model.dart';
 import '../models/tenant_model.dart';
 import '../models/token_response_model.dart';
@@ -14,6 +15,7 @@ class HippoAuthService {
   static const String _baseUrl = 'https://www.hippocx.com';
   static const String _tokenKey = 'hippo_auth_token';
   static const String _userKey = 'hippo_auth_user';
+  static const String _permissionsKey = 'hippo_permissions';
   static const _timeout = Duration(seconds: 15);
 
   static const String _ceoStaticToken =
@@ -89,6 +91,11 @@ class HippoAuthService {
       await prefs.setString(_userKey, user.encode());
 
       debugPrint('Stored user in SharedPreferences ✓');
+
+      // Fetch role permissions for non-CEO users
+      if (!user.platformOwner) {
+        await fetchAndStorePermissions();
+      }
 
       return user;
     } on SocketException {
@@ -182,8 +189,40 @@ class HippoAuthService {
       await Future.wait([
         prefs.remove(_tokenKey),
         prefs.remove(_userKey),
+        prefs.remove(_permissionsKey),
       ]);
     } catch (_) {}
+  }
+
+  /// Calls GET /rolepermissions and saves the result to SharedPreferences.
+  /// Status 200 → employee role permissions stored.
+  /// Status 250 → company/ceo user, no permissions to store (all-true default used).
+  Future<void> fetchAndStorePermissions() async {
+    try {
+      final res = await authenticatedRequest('/rolepermissions');
+      debugPrint('── PERMISSIONS STATUS: ${res.statusCode} ──');
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+        if (decoded.containsKey('permissions')) {
+          final model = PermissionsModel.fromJson(decoded);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_permissionsKey, model.encode());
+          debugPrint('Permissions stored ✓ role: ${model.roleName}');
+        }
+      }
+      // 250 = "user is a ceo" / company admin — all-true defaults apply, nothing stored.
+    } catch (e) {
+      debugPrint('fetchAndStorePermissions error: $e');
+    }
+  }
+
+  Future<PermissionsModel?> getStoredPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return PermissionsModel.decode(prefs.getString(_permissionsKey));
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<http.Response> authenticatedRequest(
@@ -710,8 +749,7 @@ class HippoAuthService {
     return Map<String, dynamic>.from(jsonDecode(res.body));
   }
 
-  Future<void> addQuoteMaster(
-      int tab, String title, List<String> notes) async {
+  Future<void> addQuoteMaster(int tab, String title, List<String> notes) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     final res = await authenticatedRequest(
@@ -751,46 +789,153 @@ class HippoAuthService {
 
   // ── Leads (/leads, /followups) ───────────────────────────────────────────────
 
+  // pipeline values: 'pipeline'(all), 'active'(tab=4), 'inactive'(tab=2), 'bulkfailed'(tab=3)
+  static const _pipelineTabMap = {
+    'pipeline': '4', // status='active' — leads in the sales pipeline
+    'active': '1', // status='converted' — leads that became clients
+    'inactive': '2',
+    'bulkfailed': '3',
+  };
+
+  Future<Map<String, dynamic>> getLeadsPaged({
+    String pipeline = 'pipeline',
+    int page = 0,
+    int rowsPerPage = 25,
+    Map<String, String> colFilters = const {},
+  }) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final tab = _pipelineTabMap[pipeline] ?? '';
+    final queryParams = <String, String>{
+      'companyid': companyId.toString(),
+      'currentpage': page.toString(),
+      'rowsPerPage': rowsPerPage.toString(),
+    };
+    if (tab.isNotEmpty) queryParams['tab'] = tab;
+    if (colFilters.isNotEmpty) {
+      final filterList = colFilters.entries
+          .map((e) => {'field': e.key, 'value': e.value})
+          .toList();
+      queryParams['filters'] = jsonEncode(filterList);
+    }
+    final res = await authenticatedRequest('/lead', queryParams: queryParams);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    // response: { data: [[...rows]], totalrows: [{ totalusers: N }] }
+    final dataOuter = decoded['data'];
+    List<dynamic> rawList = [];
+    if (dataOuter is List && dataOuter.isNotEmpty) {
+      rawList = dataOuter[0] is List ? dataOuter[0] as List : dataOuter;
+    }
+    final totalrowsList = decoded['totalrows'];
+    int total = 0;
+    if (totalrowsList is List && totalrowsList.isNotEmpty) {
+      total =
+          int.tryParse(totalrowsList[0]?['totalusers']?.toString() ?? '0') ?? 0;
+    }
+    return {
+      'data': rawList.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      'total': total,
+    };
+  }
+
+  Future<void> addLead(Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    data['action'] = 'add';
+    final res = await authenticatedRequest('/lead', method: 'POST', body: data);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<void> updateLead(
+      dynamic id, String pipeline, Map<String, dynamic> data) async {
+    final tab = _pipelineTabMap[pipeline] ?? '4';
+    final res = await authenticatedRequest(
+      '/lead',
+      method: 'PUT',
+      queryParams: {'id': id.toString(), 'tab': tab.isEmpty ? '4' : tab},
+      body: data,
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> deleteLead(dynamic id, String pipeline) async {
+    final tab = _pipelineTabMap[pipeline] ?? '4';
+    final res = await authenticatedRequest(
+      '/lead',
+      method: 'DELETE',
+      queryParams: {'id': id.toString(), 'tab': tab.isEmpty ? '4' : tab},
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  // keep for followups tab
   Future<List<Map<String, dynamic>>> getLeads() async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     final res = await authenticatedRequest(
-      '/leads',
+      '/lead',
       queryParams: {'companyid': companyId.toString()},
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
     final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    }
     if (decoded is Map) {
-      final list = decoded['leads'] ?? decoded['data'] ?? [];
-      if (list is List) {
-        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final dataOuter = decoded['data'];
+      if (dataOuter is List && dataOuter.isNotEmpty) {
+        final inner = dataOuter[0] is List ? dataOuter[0] as List : dataOuter;
+        return inner.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       }
     }
     return [];
   }
 
-  Future<List<Map<String, dynamic>>> getFollowups() async {
+  Future<Map<String, dynamic>> getFollowupsPaged({
+    int page = 0,
+    int rowsPerPage = 25,
+    Map<String, String> colFilters = const {},
+  }) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
+    final queryParams = <String, String>{
+      'companyid': companyId.toString(),
+      'currentpage': page.toString(),
+      'rowsPerPage': rowsPerPage.toString(),
+    };
+    if (colFilters.isNotEmpty) {
+      final filterList = colFilters.entries
+          .map((e) => {'field': e.key, 'value': e.value})
+          .toList();
+      queryParams['filters'] = jsonEncode(filterList);
+    }
+    final res =
+        await authenticatedRequest('/followup', queryParams: queryParams);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    // Response: { columns, data: [...rows], totalrows: [{ totalusers: N }] }
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = decoded['data'];
+    final totalrows = decoded['totalrows'];
+    int total = 0;
+    if (totalrows is List && totalrows.isNotEmpty) {
+      total = int.tryParse(totalrows[0]?['totalusers']?.toString() ?? '0') ?? 0;
+    }
+    return {
+      'data': list is List
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[],
+      'total': total,
+    };
+  }
+
+  Future<void> deleteFollowup(dynamic id) async {
     final res = await authenticatedRequest(
-      '/followups',
-      queryParams: {'companyid': companyId.toString()},
+      '/followup',
+      method: 'DELETE',
+      queryParams: {'id': id.toString()},
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
-    final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    }
-    if (decoded is Map) {
-      final list = decoded['followups'] ?? decoded['data'] ?? [];
-      if (list is List) {
-        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      }
-    }
-    return [];
   }
 
   // ── Tasks (/tasks) ────────────────────────────────────────────────────────────
@@ -822,17 +967,25 @@ class HippoAuthService {
     String tab = 'active',
     int page = 0,
     int rowsPerPage = 25,
+    Map<String, String> colFilters = const {},
   }) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
+    final queryParams = <String, String>{
+      'companyid': companyId.toString(),
+      'tab': tab,
+      'currentpage': page.toString(),
+      'rowsPerPage': rowsPerPage.toString(),
+    };
+    if (colFilters.isNotEmpty) {
+      final filterList = colFilters.entries
+          .map((e) => {'field': e.key, 'value': e.value})
+          .toList();
+      queryParams['filters'] = jsonEncode(filterList);
+    }
     final res = await authenticatedRequest(
       '/employee',
-      queryParams: {
-        'companyid': companyId.toString(),
-        'tab': tab,
-        'currentpage': page.toString(),
-        'rowsPerPage': rowsPerPage.toString(),
-      },
+      queryParams: queryParams,
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
     final decoded = jsonDecode(res.body) as Map<String, dynamic>;
@@ -850,11 +1003,16 @@ class HippoAuthService {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     data['companyid'] = companyId;
+    debugPrint('=== ADD EMPLOYEE REQUEST ===');
+    debugPrint('Body: $data');
     final res = await authenticatedRequest(
       '/employee',
       method: 'POST',
       body: data,
     );
+    debugPrint('=== ADD EMPLOYEE RESPONSE ===');
+    debugPrint('Status: ${res.statusCode}');
+    debugPrint('Body: ${res.body}');
     if (res.statusCode != 200 && res.statusCode != 201) {
       throw Exception(_parseMessage(res.body));
     }
@@ -884,48 +1042,150 @@ class HippoAuthService {
 
   // ── Products / Services (/products) ──────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> getProducts() async {
-    final companyId = await _getCompanyId();
-    if (companyId == null) throw Exception('Company ID not found.');
+  Future<Map<String, dynamic>> getProductsPaged({
+    int page = 0,
+    int rowsPerPage = 25,
+    Map<String, String> colFilters = const {},
+  }) async {
+    final queryParams = <String, String>{
+      'currentpage': page.toString(),
+      'rowsPerPage': rowsPerPage.toString(),
+    };
+    if (colFilters.isNotEmpty) {
+      final filterList = colFilters.entries
+          .map((e) => {'field': e.key, 'value': e.value})
+          .toList();
+      queryParams['filters'] = jsonEncode(filterList);
+    }
     final res = await authenticatedRequest(
-      '/products',
-      queryParams: {'companyid': companyId.toString()},
+      '/product',
+      queryParams: queryParams,
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
-    final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = decoded['data'];
+    final total = decoded['totalrows'] ?? decoded['total'] ?? 0;
+    return {
+      'data': list is List
+          ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[],
+      'total': total is int ? total : int.tryParse(total.toString()) ?? 0,
+    };
+  }
+
+  Future<void> addProduct(Map<String, dynamic> data) async {
+    final res = await authenticatedRequest(
+      '/product',
+      method: 'POST',
+      body: data,
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
     }
-    if (decoded is Map) {
-      final list = decoded['products'] ?? decoded['services'] ?? decoded['data'] ?? [];
-      if (list is List) {
-        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      }
-    }
-    return [];
+  }
+
+  Future<void> updateProduct(Map<String, dynamic> data) async {
+    final res = await authenticatedRequest(
+      '/product',
+      method: 'PUT',
+      body: data,
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> deleteProduct(dynamic id) async {
+    final res = await authenticatedRequest(
+      '/product',
+      method: 'DELETE',
+      queryParams: {'id': id.toString()},
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
   }
 
   // ── Clients (/clients) ────────────────────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> getClients() async {
+  Future<Map<String, dynamic>> getClientsPaged({
+    int page = 0,
+    int rowsPerPage = 25,
+    Map<String, String> colFilters = const {},
+  }) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
-    final res = await authenticatedRequest(
-      '/clients',
-      queryParams: {'companyid': companyId.toString()},
-    );
+    final queryParams = <String, String>{
+      'companyid': companyId.toString(),
+      'currentpage': page.toString(),
+      'rowsPerPage': rowsPerPage.toString(),
+    };
+    if (colFilters.isNotEmpty) {
+      final filterList = colFilters.entries
+          .map((e) => {'field': e.key, 'value': e.value})
+          .toList();
+      queryParams['filters'] = jsonEncode(filterList);
+    }
+    final res =
+        await authenticatedRequest('/clients', queryParams: queryParams);
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
     final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    }
-    if (decoded is Map) {
-      final list = decoded['clients'] ?? decoded['data'] ?? [];
-      if (list is List) {
-        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    List<dynamic> rawList = [];
+    int total = 0;
+    if (decoded is Map<String, dynamic>) {
+      final dataOuter = decoded['data'];
+      if (dataOuter is List && dataOuter.isNotEmpty) {
+        rawList = dataOuter[0] is List ? dataOuter[0] as List : dataOuter;
       }
+      final totalrows = decoded['totalrows'];
+      if (totalrows is List && totalrows.isNotEmpty) {
+        total =
+            int.tryParse(totalrows[0]?['totalusers']?.toString() ?? '0') ?? 0;
+      } else {
+        final t = decoded['total'] ?? decoded['totalrows'] ?? 0;
+        total = t is int ? t : int.tryParse(t.toString()) ?? rawList.length;
+      }
+      if (total == 0 && rawList.isEmpty) {
+        final list = decoded['clients'] ?? decoded['data'] ?? [];
+        if (list is List) {
+          rawList = list;
+          total = rawList.length;
+        }
+      }
+    } else if (decoded is List) {
+      rawList = decoded;
+      total = decoded.length;
     }
-    return [];
+    return {
+      'data': rawList.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      'total': total,
+    };
+  }
+
+  Future<void> addClient(Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    final res =
+        await authenticatedRequest('/clients', method: 'POST', body: data);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<void> updateClient(dynamic id, Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    data['id'] = id;
+    final res =
+        await authenticatedRequest('/clients', method: 'PUT', body: data);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> deleteClient(dynamic id) async {
+    final res = await authenticatedRequest(
+      '/clients',
+      method: 'DELETE',
+      queryParams: {'id': id.toString()},
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
   }
 
   // ── Sales & Billing (/sales) ──────────────────────────────────────────────────

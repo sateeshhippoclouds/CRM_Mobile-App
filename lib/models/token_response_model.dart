@@ -11,6 +11,7 @@ class TokenResponseModel {
   final String userType;
   final int iat;
   final int exp;
+  final int? employeeId;
 
   TokenResponseModel({
     required this.token,
@@ -23,6 +24,7 @@ class TokenResponseModel {
     required this.userType,
     required this.iat,
     required this.exp,
+    this.employeeId,
   });
 
   bool get isExpired =>
@@ -43,6 +45,7 @@ class TokenResponseModel {
       userType: payload['user_type'] as String? ?? '',
       iat: payload['iat'] as int? ?? 0,
       exp: payload['exp'] as int? ?? 0,
+      employeeId: payload['employeeid'] as int? ?? payload['id'] as int?,
     );
   }
 
@@ -57,6 +60,7 @@ class TokenResponseModel {
         'user_type': userType,
         'iat': iat,
         'exp': exp,
+        'employeeid': employeeId,
       });
 
   static TokenResponseModel? decode(String? encoded) {

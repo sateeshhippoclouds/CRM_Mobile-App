@@ -162,7 +162,6 @@ class _CompanyDrawerState extends State<_CompanyDrawer> {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
-                // Dashboard (current screen)
                 _NavItem(
                   icon: Icons.dashboard_rounded,
                   label: 'Dashboard',
@@ -170,82 +169,89 @@ class _CompanyDrawerState extends State<_CompanyDrawer> {
                   onTap: () => Navigator.pop(context),
                 ),
 
-                // Masters (expandable)
-                _MastersItem(
-                  expanded: _mastersExpanded,
-                  onToggle: () =>
-                      setState(() => _mastersExpanded = !_mastersExpanded),
-                  children: [
-                    _SubNavItem(
-                      label: 'Leads',
-                      onTap: () => _navigate(
-                          context, const CompanyMastersLeadsView()),
-                    ),
-                    _SubNavItem(
-                      label: 'Clients',
-                      onTap: () => _navigate(
-                          context, const CompanyMastersClientsView()),
-                    ),
-                    _SubNavItem(
-                      label: 'Location',
-                      onTap: () =>
-                          _navigate(context, const CompanyLocationView()),
-                    ),
-                    _SubNavItem(
-                      label: 'Others',
-                      onTap: () =>
-                          _navigate(context, const CompanyOthersView()),
-                    ),
-                    _SubNavItem(
-                      label: 'Terms',
-                      onTap: () =>
-                          _navigate(context, const CompanyTermsView()),
-                    ),
-                  ],
-                ),
+                if (widget.model.canViewMasters)
+                  _MastersItem(
+                    expanded: _mastersExpanded,
+                    onToggle: () =>
+                        setState(() => _mastersExpanded = !_mastersExpanded),
+                    children: [
+                      _SubNavItem(
+                        label: 'Leads',
+                        onTap: () => _navigate(
+                            context, const CompanyMastersLeadsView()),
+                      ),
+                      _SubNavItem(
+                        label: 'Clients',
+                        onTap: () => _navigate(
+                            context, const CompanyMastersClientsView()),
+                      ),
+                      _SubNavItem(
+                        label: 'Location',
+                        onTap: () =>
+                            _navigate(context, const CompanyLocationView()),
+                      ),
+                      _SubNavItem(
+                        label: 'Others',
+                        onTap: () =>
+                            _navigate(context, const CompanyOthersView()),
+                      ),
+                      _SubNavItem(
+                        label: 'Terms',
+                        onTap: () =>
+                            _navigate(context, const CompanyTermsView()),
+                      ),
+                    ],
+                  ),
 
-                _NavItem(
-                  icon: Icons.bar_chart_rounded,
-                  label: 'Leads',
-                  onTap: () =>
-                      _navigate(context, const CompanyLeadsView()),
-                ),
-                _NavItem(
-                  icon: Icons.people_rounded,
-                  label: 'Clients',
-                  onTap: () =>
-                      _navigate(context, const CompanyClientsView()),
-                ),
-                _NavItem(
-                  icon: Icons.task_alt_rounded,
-                  label: 'Tasks',
-                  onTap: () =>
-                      _navigate(context, const CompanyTasksView()),
-                ),
-                _NavItem(
-                  icon: Icons.receipt_long_rounded,
-                  label: 'Sales & Billing',
-                  onTap: () =>
-                      _navigate(context, const CompanySalesBillingView()),
-                ),
-                _NavItem(
-                  icon: Icons.badge_rounded,
-                  label: 'Employees',
-                  onTap: () =>
-                      _navigate(context, const CompanyEmployeesView()),
-                ),
-                _NavItem(
-                  icon: Icons.inventory_2_rounded,
-                  label: 'Products',
-                  onTap: () =>
-                      _navigate(context, const CompanyProductsView()),
-                ),
-                _NavItem(
-                  icon: Icons.manage_accounts_rounded,
-                  label: 'Role Management',
-                  onTap: () =>
-                      _navigate(context, const CompanyRoleManagementView()),
-                ),
+                if (widget.model.canViewLeads)
+                  _NavItem(
+                    icon: Icons.bar_chart_rounded,
+                    label: 'Leads',
+                    onTap: () =>
+                        _navigate(context, const CompanyLeadsView()),
+                  ),
+                if (widget.model.canViewClients)
+                  _NavItem(
+                    icon: Icons.people_rounded,
+                    label: 'Clients',
+                    onTap: () =>
+                        _navigate(context, const CompanyClientsView()),
+                  ),
+                if (widget.model.canViewTasks)
+                  _NavItem(
+                    icon: Icons.task_alt_rounded,
+                    label: 'Tasks',
+                    onTap: () =>
+                        _navigate(context, const CompanyTasksView()),
+                  ),
+                if (widget.model.canViewBilling)
+                  _NavItem(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Sales & Billing',
+                    onTap: () =>
+                        _navigate(context, const CompanySalesBillingView()),
+                  ),
+                if (widget.model.canViewEmployees)
+                  _NavItem(
+                    icon: Icons.badge_rounded,
+                    label: 'Employees',
+                    onTap: () =>
+                        _navigate(context, const CompanyEmployeesView()),
+                  ),
+                if (widget.model.canViewProducts)
+                  _NavItem(
+                    icon: Icons.inventory_2_rounded,
+                    label: 'Products',
+                    onTap: () =>
+                        _navigate(context, const CompanyProductsView()),
+                  ),
+                if (widget.model.canViewRoleManagement)
+                  _NavItem(
+                    icon: Icons.manage_accounts_rounded,
+                    label: 'Role Management',
+                    onTap: () =>
+                        _navigate(context, const CompanyRoleManagementView()),
+                  ),
               ],
             ),
           ),

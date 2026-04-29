@@ -68,8 +68,8 @@ class _CompanyEmployeesViewState extends State<CompanyEmployeesView> {
     );
   }
 
-  void _showDeleteConfirm(Map<String, dynamic> item,
-      CompanyEmployeesViewModel model) {
+  void _showDeleteConfirm(
+      Map<String, dynamic> item, CompanyEmployeesViewModel model) {
     final name = item['employee_name']?.toString() ?? 'this employee';
     final id = item['id'] ?? item['employeeid'];
     showDialog(
@@ -123,11 +123,12 @@ class _CompanyEmployeesViewState extends State<CompanyEmployeesView> {
               tooltip: 'Customize Columns',
               onPressed: () => _showCustomizeColumns(model),
             ),
-            IconButton(
-              icon: const Icon(Icons.add, color: Colors.white),
-              tooltip: 'Add Employee',
-              onPressed: () => _showAddDialog(model),
-            ),
+            if (model.canWrite)
+              IconButton(
+                icon: const Icon(Icons.add, color: Colors.white),
+                tooltip: 'Add Employee',
+                onPressed: () => _showAddDialog(model),
+              ),
           ]),
           body: model.isBusy
               ? const Center(child: CircularProgressIndicator(color: kCrmBlue))
@@ -138,19 +139,19 @@ class _CompanyEmployeesViewState extends State<CompanyEmployeesView> {
                         _Toolbar(
                           searchCtrl: _searchCtrl,
                           model: model,
-                          onAdd: () => _showAddDialog(model),
+                          onAdd: model.canWrite ? () => _showAddDialog(model) : null,
                         ),
                         if (model.hasActiveFilters)
                           _ActiveFilterChips(model: model),
-                        if (model.hasSelection)
-                          _SelectionBar(model: model),
+                        if (model.hasSelection) _SelectionBar(model: model),
                         Expanded(
                           child: _EmployeeTable(
                             model: model,
                             hScroll: _hScroll,
+                            canUpdate: model.canUpdate,
+                            canDelete: model.canDelete,
                             onEdit: (item) => _showAddDialog(model, item),
-                            onDelete: (item) =>
-                                _showDeleteConfirm(item, model),
+                            onDelete: (item) => _showDeleteConfirm(item, model),
                           ),
                         ),
                         _PaginationBar(model: model),
@@ -202,10 +203,10 @@ class _SelectionBar extends StatelessWidget {
 
 class _Toolbar extends StatelessWidget {
   const _Toolbar(
-      {required this.searchCtrl, required this.model, required this.onAdd});
+      {required this.searchCtrl, required this.model, this.onAdd});
   final TextEditingController searchCtrl;
   final CompanyEmployeesViewModel model;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;
 
   static const _tabColors = {
     'active': Color(0xff16A34A),
@@ -254,8 +255,7 @@ class _Toolbar extends StatelessWidget {
                           decoration: BoxDecoration(
                               color: color, shape: BoxShape.circle)),
                       const SizedBox(width: 6),
-                      Text(t['label']!,
-                          style: const TextStyle(fontSize: 13)),
+                      Text(t['label']!, style: const TextStyle(fontSize: 13)),
                     ],
                   ),
                 );
@@ -265,23 +265,24 @@ class _Toolbar extends StatelessWidget {
               },
             ),
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 40,
-            child: ElevatedButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add, size: 18),
-              label:
-                  const Text('Add Employee', style: TextStyle(fontSize: 12)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kCrmBlue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+          if (onAdd != null) ...[
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 40,
+              child: ElevatedButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add Employee', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kCrmBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -348,11 +349,15 @@ class _EmployeeTable extends StatelessWidget {
   const _EmployeeTable({
     required this.model,
     required this.hScroll,
+    required this.canUpdate,
+    required this.canDelete,
     required this.onEdit,
     required this.onDelete,
   });
   final CompanyEmployeesViewModel model;
   final ScrollController hScroll;
+  final bool canUpdate;
+  final bool canDelete;
   final ValueChanged<Map<String, dynamic>> onEdit;
   final ValueChanged<Map<String, dynamic>> onDelete;
 
@@ -393,8 +398,8 @@ class _EmployeeTable extends StatelessWidget {
                   height: _headerH,
                   decoration: const BoxDecoration(
                     color: Color(0xffF3F4F6),
-                    border: Border(
-                        bottom: BorderSide(color: Color(0xffE5E7EB))),
+                    border:
+                        Border(bottom: BorderSide(color: Color(0xffE5E7EB))),
                   ),
                   child: Row(
                     children: cols
@@ -418,6 +423,8 @@ class _EmployeeTable extends StatelessWidget {
                         cols: cols,
                         isEven: i % 2 == 0,
                         isSelected: model.isSelected(id),
+                        canUpdate: canUpdate,
+                        canDelete: canDelete,
                         onToggleSelect: () => model.toggleRowSelection(id),
                         onEdit: () => onEdit(item),
                         onDelete: () => onDelete(item),
@@ -466,7 +473,11 @@ class _HeaderCell extends StatelessWidget {
         ),
         child: Center(
           child: Checkbox(
-            value: allSel ? true : someSel ? null : false,
+            value: allSel
+                ? true
+                : someSel
+                    ? null
+                    : false,
             tristate: true,
             activeColor: kCrmBlue,
             onChanged: (_) => model.toggleSelectAll(),
@@ -582,8 +593,7 @@ class _ColFilterDialogState extends State<_ColFilterDialog> {
         autofocus: true,
         decoration: InputDecoration(
           hintText: 'Filter ${widget.col.label}',
-          hintStyle:
-              const TextStyle(fontSize: 13, color: Color(0xff9CA3AF)),
+          hintStyle: const TextStyle(fontSize: 13, color: Color(0xff9CA3AF)),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           border: OutlineInputBorder(
@@ -600,8 +610,8 @@ class _ColFilterDialogState extends State<_ColFilterDialog> {
       actions: [
         TextButton(
           onPressed: _clear,
-          child: const Text('CLEAR',
-              style: TextStyle(color: Color(0xff6B7280))),
+          child:
+              const Text('CLEAR', style: TextStyle(color: Color(0xff6B7280))),
         ),
         ElevatedButton(
           onPressed: _apply,
@@ -623,6 +633,8 @@ class _DataRow extends StatelessWidget {
     required this.cols,
     required this.isEven,
     required this.isSelected,
+    required this.canUpdate,
+    required this.canDelete,
     required this.onToggleSelect,
     required this.onEdit,
     required this.onDelete,
@@ -633,6 +645,8 @@ class _DataRow extends StatelessWidget {
   final List<ColumnDef> cols;
   final bool isEven;
   final bool isSelected;
+  final bool canUpdate;
+  final bool canDelete;
   final VoidCallback onToggleSelect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -656,8 +670,7 @@ class _DataRow extends StatelessWidget {
         return _Cell(
           width: col.width,
           child: Text('$rowIndex',
-              style: const TextStyle(
-                  fontSize: 12, color: Color(0xff6B7280))),
+              style: const TextStyle(fontSize: 12, color: Color(0xff6B7280))),
         );
 
       case 'employee_status':
@@ -671,9 +684,7 @@ class _DataRow extends StatelessWidget {
           width: col.width,
           child: Text(status,
               style: TextStyle(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: FontWeight.w600)),
+                  fontSize: 12, color: color, fontWeight: FontWeight.w600)),
         );
 
       case 'salary':
@@ -694,8 +705,7 @@ class _DataRow extends StatelessWidget {
         final yes = v == true || v == 'true' || v == 1;
         return _Cell(
           width: col.width,
-          child: Text(yes ? 'Yes' : 'No',
-              style: const TextStyle(fontSize: 12)),
+          child: Text(yes ? 'Yes' : 'No', style: const TextStyle(fontSize: 12)),
         );
 
       case 'action':
@@ -705,15 +715,15 @@ class _DataRow extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _ActionBtn(
-                  icon: Icons.edit_outlined,
-                  color: kCrmBlue,
-                  onTap: onEdit),
-              const SizedBox(width: 4),
-              _ActionBtn(
-                  icon: Icons.delete_outline,
-                  color: const Color(0xffDC2626),
-                  onTap: onDelete),
+              if (canUpdate)
+                _ActionBtn(
+                    icon: Icons.edit_outlined, color: kCrmBlue, onTap: onEdit),
+              if (canUpdate && canDelete) const SizedBox(width: 4),
+              if (canDelete)
+                _ActionBtn(
+                    icon: Icons.delete_outline,
+                    color: const Color(0xffDC2626),
+                    onTap: onDelete),
             ],
           ),
         );
@@ -724,8 +734,7 @@ class _DataRow extends StatelessWidget {
           width: col.width,
           child: Text(
             val,
-            style: const TextStyle(
-                fontSize: 12, color: Color(0xff374151)),
+            style: const TextStyle(fontSize: 12, color: Color(0xff374151)),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
@@ -756,8 +765,7 @@ class _Cell extends StatelessWidget {
   final double width;
   final Widget child;
 
-  static const _divider =
-      BorderSide(color: Color(0xffEEEEEE), width: 0.8);
+  static const _divider = BorderSide(color: Color(0xffEEEEEE), width: 0.8);
 
   @override
   Widget build(BuildContext context) {
@@ -824,8 +832,7 @@ class _PaginationBar extends StatelessWidget {
               items: CompanyEmployeesViewModel.rowsPerPageOptions
                   .map((n) => DropdownMenuItem(
                       value: n,
-                      child: Text('$n',
-                          style: const TextStyle(fontSize: 13))))
+                      child: Text('$n', style: const TextStyle(fontSize: 13))))
                   .toList(),
               onChanged: (v) {
                 if (v != null) model.setRowsPerPage(v);
@@ -902,9 +909,7 @@ class _CustomizeColumnsDialogState extends State<_CustomizeColumnsDialog> {
             child: Text(
               'Customize Columns',
               style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: kCrmBlue),
+                  fontSize: 16, fontWeight: FontWeight.w700, color: kCrmBlue),
             ),
           ),
           TextButton(
@@ -970,7 +975,7 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
   final _secCtrl = TextEditingController();
 
   String? _gender;
-  dynamic _positionId;   // integer ID from masters
+  dynamic _positionId; // integer ID from masters
   int? _countryId;
   int? _stateId;
   int? _cityId;
@@ -1021,9 +1026,10 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
 
     // GET returns city/state/country as integer IDs (no _id suffix)
     _countryId = _toInt(e['country'] ?? e['country_id']);
-    _stateId   = _toInt(e['state']   ?? e['state_id']);
-    _cityId    = _toInt(e['city']    ?? e['city_id']);
-    _leadSourceId = _toInt(e['leadSource'] ?? e['lead_source_id'] ?? e['leadsource']);
+    _stateId = _toInt(e['state'] ?? e['state_id']);
+    _cityId = _toInt(e['city'] ?? e['city_id']);
+    _leadSourceId =
+        _toInt(e['leadSource'] ?? e['lead_source_id'] ?? e['leadsource']);
   }
 
   int? _toInt(dynamic v) {
@@ -1051,12 +1057,12 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
       final srcRaw = masters['sourceType'] ?? [];
 
       setState(() {
-        _countries    = results[0] as List<Map<String, dynamic>>;
-        _states       = results[1] as List<Map<String, dynamic>>;
-        _cities       = results[2] as List<Map<String, dynamic>>;
-        _leadSources  = parseList(srcRaw);
+        _countries = results[0] as List<Map<String, dynamic>>;
+        _states = results[1] as List<Map<String, dynamic>>;
+        _cities = results[2] as List<Map<String, dynamic>>;
+        _leadSources = parseList(srcRaw);
         _jobPositions = results[4] as List<Map<String, dynamic>>;
-        _loadingLoc   = false;
+        _loadingLoc = false;
       });
       debugPrint('Roles (job positions): $_jobPositions');
     } catch (e) {
@@ -1091,7 +1097,10 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _saving = true; _error = null; });
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
 
     final data = {
       'employeeName': _nameCtrl.text.trim(),
@@ -1120,14 +1129,18 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
     if (err == null) {
       Navigator.pop(context);
     } else {
-      setState(() { _saving = false; _error = err; });
+      setState(() {
+        _saving = false;
+        _error = err;
+      });
     }
   }
 
   InputDecoration _dec(String hint) => InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(fontSize: 13, color: Color(0xff9CA3AF)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: const BorderSide(color: Color(0xffD1D5DB))),
@@ -1212,9 +1225,9 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
               child: _loadingLoc
                   ? const Center(
                       child: Padding(
-                        padding: EdgeInsets.all(32),
-                        child: CircularProgressIndicator(color: kCrmBlue),
-                      ))
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(color: kCrmBlue),
+                    ))
                   : Form(
                       key: _formKey,
                       child: Column(
@@ -1228,8 +1241,9 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                             controller: _nameCtrl,
                             decoration: _dec('Employee Name *'),
                             style: const TextStyle(fontSize: 13),
-                            validator: (v) =>
-                                v == null || v.trim().isEmpty ? 'Required' : null,
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Required'
+                                : null,
                           ),
                           const SizedBox(height: 10),
                           Row(children: [
@@ -1239,8 +1253,9 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                 decoration: _dec('Email *'),
                                 style: const TextStyle(fontSize: 13),
                                 keyboardType: TextInputType.emailAddress,
-                                validator: (v) =>
-                                    v == null || v.trim().isEmpty ? 'Required' : null,
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Required'
+                                    : null,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -1250,8 +1265,9 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                 decoration: _dec('Phone Number *'),
                                 style: const TextStyle(fontSize: 13),
                                 keyboardType: TextInputType.phone,
-                                validator: (v) =>
-                                    v == null || v.trim().isEmpty ? 'Required' : null,
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Required'
+                                    : null,
                               ),
                             ),
                           ]),
@@ -1274,7 +1290,8 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                     .map((g) => DropdownMenuItem(
                                         value: g,
                                         child: Text(g,
-                                            style: const TextStyle(fontSize: 13))))
+                                            style:
+                                                const TextStyle(fontSize: 13))))
                                     .toList(),
                                 onChanged: (v) => setState(() => _gender = v),
                               ),
@@ -1296,7 +1313,8 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                   ),
                                   ..._jobPositions.map((p) {
                                     final id = _toInt(p['id']);
-                                    final label = p['role_name']?.toString() ?? '';
+                                    final label =
+                                        p['role_name']?.toString() ?? '';
                                     return DropdownMenuItem<int?>(
                                       value: id,
                                       child: Text(label,
@@ -1317,7 +1335,8 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                     .map((c) => DropdownMenuItem(
                                         value: _toInt(c['id']),
                                         child: Text(c['name']?.toString() ?? '',
-                                            style: const TextStyle(fontSize: 13))))
+                                            style:
+                                                const TextStyle(fontSize: 13))))
                                     .toList(),
                                 onChanged: (v) => setState(() {
                                   _countryId = v;
@@ -1338,7 +1357,8 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                     .map((s) => DropdownMenuItem(
                                         value: _toInt(s['id']),
                                         child: Text(s['name']?.toString() ?? '',
-                                            style: const TextStyle(fontSize: 13))))
+                                            style:
+                                                const TextStyle(fontSize: 13))))
                                     .toList(),
                                 onChanged: (v) => setState(() {
                                   _stateId = v;
@@ -1356,7 +1376,8 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                                     .map((c) => DropdownMenuItem(
                                         value: _toInt(c['id']),
                                         child: Text(c['name']?.toString() ?? '',
-                                            style: const TextStyle(fontSize: 13))))
+                                            style:
+                                                const TextStyle(fontSize: 13))))
                                     .toList(),
                                 onChanged: (v) => setState(() => _cityId = v),
                               ),
@@ -1364,30 +1385,37 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                           ]),
                           const SizedBox(height: 10),
                           // Lead Source
-                          _drop<int?>(
-                            hint: 'Lead Source',
-                            value: _safeVal(_leadSourceId, _leadSources),
-                            items: [
-                              const DropdownMenuItem<int?>(
-                                value: null,
-                                child: Text('Select Lead Source',
-                                    style: TextStyle(
-                                        fontSize: 13, color: Color(0xff9CA3AF))),
-                              ),
-                              ..._leadSources.map((s) {
-                                final id = _toInt(s['id'] ?? s['lead_source_id']);
-                                final label = s['value']?.toString() ??
-                                    s['name']?.toString() ??
-                                    s['lead_source']?.toString() ?? '';
-                                return DropdownMenuItem<int?>(
-                                  value: id,
-                                  child: Text(label,
-                                      style: const TextStyle(fontSize: 13)),
-                                );
-                              }),
-                            ],
-                            onChanged: (v) => setState(() => _leadSourceId = v),
-                          ),
+                          _followupDuty
+                              ? _drop<int?>(
+                                  hint: 'Lead Source',
+                                  value: _safeVal(_leadSourceId, _leadSources),
+                                  items: [
+                                    const DropdownMenuItem<int?>(
+                                      value: null,
+                                      child: Text('Select Lead Source',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              color: Color(0xff9CA3AF))),
+                                    ),
+                                    ..._leadSources.map((s) {
+                                      final id = _toInt(
+                                          s['id'] ?? s['lead_source_id']);
+                                      final label = s['value']?.toString() ??
+                                          s['name']?.toString() ??
+                                          s['lead_source']?.toString() ??
+                                          '';
+                                      return DropdownMenuItem<int?>(
+                                        value: id,
+                                        child: Text(label,
+                                            style:
+                                                const TextStyle(fontSize: 13)),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (v) =>
+                                      setState(() => _leadSourceId = v),
+                                )
+                              : const SizedBox.shrink(),
                           const SizedBox(height: 16),
                           // Follow-up duty + Email alerts
                           Row(children: [

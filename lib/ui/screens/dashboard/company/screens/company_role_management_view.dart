@@ -18,7 +18,7 @@ const _moduleLabels = {
   'masters': 'Masters',
   'leads': 'Leads',
   'clients': 'Clients',
-  'rolemanagement': 'Rolemanagement',
+  'rolemanagement': 'Role Management',
   'services': 'Services',
   'followup': 'Followup',
   'task': 'Tasks',
@@ -122,31 +122,33 @@ class _RolesBodyState extends State<_RolesBody> {
                       color: Colors.white, size: 22),
                 ),
               ),
-              const SizedBox(width: 10),
-              // Add role button
-              GestureDetector(
-                onTap: () => _showCreateDialog(context, widget.model),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xff3756DF),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.add, color: Colors.white, size: 18),
-                      SizedBox(width: 4),
-                      Text('ADD ROLE',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13)),
-                    ],
+              if (widget.model.canWrite) ...[
+                const SizedBox(width: 10),
+                // Add role button
+                GestureDetector(
+                  onTap: () => _showCreateDialog(context, widget.model),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff3756DF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add, color: Colors.white, size: 18),
+                        SizedBox(width: 4),
+                        Text('ADD ROLE',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -185,6 +187,8 @@ class _RolesBodyState extends State<_RolesBody> {
                             itemBuilder: (_, i) => _RoleRow(
                               index: i + 1,
                               role: _filtered[i],
+                              canUpdate: widget.model.canUpdate,
+                              canDelete: widget.model.canDelete,
                               onView: () => _showPermissionsDialog(
                                   context, _filtered[i]),
                               onEdit: () => _showEditDialog(
@@ -370,12 +374,16 @@ class _RoleRow extends StatelessWidget {
   const _RoleRow({
     required this.index,
     required this.role,
+    required this.canUpdate,
+    required this.canDelete,
     required this.onView,
     required this.onEdit,
     required this.onDelete,
   });
   final int index;
   final Map<String, dynamic> role;
+  final bool canUpdate;
+  final bool canDelete;
   final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -383,6 +391,7 @@ class _RoleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = role['role_name']?.toString() ?? '—';
+    final showActions = canUpdate || canDelete;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -411,25 +420,29 @@ class _RoleRow extends StatelessWidget {
               ),
             ),
           ),
-          // Edit + Delete
+          // Edit + Delete (hidden if no permissions)
           SizedBox(
             width: 90,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                GestureDetector(
-                  onTap: onEdit,
-                  child: const Icon(Icons.edit_rounded,
-                      color: Color(0xff3756DF), size: 20),
-                ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: onDelete,
-                  child: const Icon(Icons.delete_rounded,
-                      color: Color(0xffEF4444), size: 20),
-                ),
-              ],
-            ),
+            child: showActions
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (canUpdate)
+                        GestureDetector(
+                          onTap: onEdit,
+                          child: const Icon(Icons.edit_rounded,
+                              color: Color(0xff3756DF), size: 20),
+                        ),
+                      if (canUpdate && canDelete) const SizedBox(width: 16),
+                      if (canDelete)
+                        GestureDetector(
+                          onTap: onDelete,
+                          child: const Icon(Icons.delete_rounded,
+                              color: Color(0xffEF4444), size: 20),
+                        ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -755,8 +768,16 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
               ..._modules.map((m) => _ModulePermRow(
                     module: m,
                     perms: _permissions[m]!,
-                    onChanged: (key, val) =>
-                        setState(() => _permissions[m]![key] = val),
+                    onChanged: (key, val) => setState(() {
+                      _permissions[m]![key] = val;
+                      if (val && (key == 'can_write' || key == 'can_update' || key == 'can_delete')) {
+                        _permissions[m]!['can_read'] = true;
+                      } else if (!val && key == 'can_read') {
+                        _permissions[m]!['can_write'] = false;
+                        _permissions[m]!['can_update'] = false;
+                        _permissions[m]!['can_delete'] = false;
+                      }
+                    }),
                   )),
 
               // Self Only

@@ -1,10 +1,24 @@
 import 'package:stacked/stacked.dart';
 
 import '../../../../../app/app.locator.dart';
+import '../../../../../models/permissions_model.dart';
+import '../../../../../models/token_response_model.dart';
 import '../../../../../services/api_services.dart';
 
 class CompanySalesBillingViewModel extends BaseViewModel {
   final _api = locator<HippoAuthService>();
+
+  TokenResponseModel? _user;
+  PermissionsModel? _permissions;
+
+  bool get _isEmployee => _user?.userType == 'employee';
+  PermissionsModel get _perms => _isEmployee
+      ? (_permissions ?? PermissionsModel.companyDefault)
+      : PermissionsModel.companyDefault;
+
+  bool get canWrite => _perms.bills.canWrite;
+  bool get canUpdate => _perms.bills.canUpdate;
+  bool get canDelete => _perms.bills.canDelete;
 
   List<Map<String, dynamic>> _drafts = [];
   List<Map<String, dynamic>> _sales = [];
@@ -47,6 +61,8 @@ class CompanySalesBillingViewModel extends BaseViewModel {
   Future<void> init() async {
     if (!_loaded) setBusy(true);
     fetchError = null;
+    _user ??= await _api.getStoredUser();
+    if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
     try {
       final data = await _api.getSalesBilling();
       _drafts = _toList(data['drafts']);

@@ -13,8 +13,14 @@ class SplashViewModel extends BaseViewModel {
     try {
       final user = await _hippoAuthService.getStoredUser();
       if (user != null) {
-        navigationService
-            .clearStackAndShow(Routes.dashboardRoute(user.userType));
+        // Refresh permissions in background so the app always has latest role data.
+        if (!user.platformOwner) {
+          await _hippoAuthService.fetchAndStorePermissions();
+        }
+        final route = user.platformOwner
+            ? Routes.ceoDashboardView
+            : Routes.companyDashboardView;
+        navigationService.clearStackAndShow(route);
       } else {
         navigationService.clearStackAndShow(Routes.loginView);
       }

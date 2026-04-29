@@ -1,10 +1,24 @@
 import 'package:stacked/stacked.dart';
 
 import '../../../../../app/app.locator.dart';
+import '../../../../../models/permissions_model.dart';
+import '../../../../../models/token_response_model.dart';
 import '../../../../../services/api_services.dart';
 
 class CompanyTasksViewModel extends BaseViewModel {
   final _api = locator<HippoAuthService>();
+
+  TokenResponseModel? _user;
+  PermissionsModel? _permissions;
+
+  bool get _isEmployee => _user?.userType == 'employee';
+  PermissionsModel get _perms => _isEmployee
+      ? (_permissions ?? PermissionsModel.companyDefault)
+      : PermissionsModel.companyDefault;
+
+  bool get canWrite => _perms.task.canWrite;
+  bool get canUpdate => _perms.task.canUpdate;
+  bool get canDelete => _perms.task.canDelete;
 
   List<Map<String, dynamic>> _all = [];
   String _query = '';
@@ -29,6 +43,8 @@ class CompanyTasksViewModel extends BaseViewModel {
   Future<void> init() async {
     if (!_loaded) setBusy(true);
     fetchError = null;
+    _user ??= await _api.getStoredUser();
+    if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
     try {
       _all = await _api.getTasks();
       _loaded = true;

@@ -29,10 +29,11 @@ class _CompanyTasksViewState extends State<CompanyTasksView> {
         return Scaffold(
           backgroundColor: kCrmBg,
           appBar: crmAppBar('Tasks', actions: [
-            IconButton(
-              icon: const Icon(Icons.add, color: Colors.white),
-              onPressed: () {},
-            ),
+            if (model.canWrite)
+              IconButton(
+                icon: const Icon(Icons.add, color: Colors.white),
+                onPressed: () {},
+              ),
           ]),
           body: model.isBusy
               ? const Center(

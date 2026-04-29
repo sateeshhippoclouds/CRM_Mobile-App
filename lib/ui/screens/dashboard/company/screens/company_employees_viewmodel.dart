@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:stacked/stacked.dart';
 
 import '../../../../../app/app.locator.dart';
+import '../../../../../models/permissions_model.dart';
+import '../../../../../models/token_response_model.dart';
 import '../../../../../services/api_services.dart';
 
 class ColumnDef {
@@ -21,6 +23,18 @@ class ColumnDef {
 
 class CompanyEmployeesViewModel extends BaseViewModel {
   final _api = locator<HippoAuthService>();
+
+  TokenResponseModel? _user;
+  PermissionsModel? _permissions;
+
+  bool get _isEmployee => _user?.userType == 'employee';
+  PermissionsModel get _perms => _isEmployee
+      ? (_permissions ?? PermissionsModel.companyDefault)
+      : PermissionsModel.companyDefault;
+
+  bool get canWrite => _perms.employees.canWrite;
+  bool get canUpdate => _perms.employees.canUpdate;
+  bool get canDelete => _perms.employees.canDelete;
 
   List<Map<String, dynamic>> _items = [];
   String _query = '';
@@ -65,7 +79,7 @@ class CompanyEmployeesViewModel extends BaseViewModel {
     ColumnDef('DOB', 'dob', 110),
     ColumnDef('Gender', 'gender', 100),
     ColumnDef('Salary', 'salary', 110),
-    ColumnDef('Status', 'employee_status', 110),
+    ColumnDef('Status', 'employee_status', 110, filterable: false),
     ColumnDef('Email Alerts', 'email_alerts', 110, filterable: false),
     ColumnDef('Action', 'action', 90, filterable: false, alwaysVisible: true),
   ];
@@ -105,6 +119,9 @@ class CompanyEmployeesViewModel extends BaseViewModel {
       .where((c) => c.alwaysVisible || (_colVisible[c.key] ?? true))
       .toList();
 
+  // Fields the backend cannot text-filter (numeric / date) — handled client-side
+  static const _clientSideFilterFields = {'salary', 'dob'};
+
   List<Map<String, dynamic>> get items {
     var list = _items;
     if (_query.isNotEmpty) {
@@ -116,10 +133,12 @@ class CompanyEmployeesViewModel extends BaseViewModel {
       }).toList();
     }
     for (final entry in _colFilters.entries) {
-      final q = entry.value.toLowerCase();
-      list = list
-          .where((e) => (e[entry.key] ?? '').toString().toLowerCase().contains(q))
-          .toList();
+      if (_clientSideFilterFields.contains(entry.key)) {
+        final q = entry.value.toLowerCase();
+        list = list
+            .where((e) => (e[entry.key] ?? '').toString().toLowerCase().contains(q))
+            .toList();
+      }
     }
     return list;
   }
@@ -135,12 +154,21 @@ class CompanyEmployeesViewModel extends BaseViewModel {
     } else {
       _colFilters[field] = value.trim();
     }
-    notifyListeners();
+    debugPrint('=== FILTER: $field="${value.trim()}" | active filters: $_colFilters ===');
+    debugPrint('=== FILTERED RESULTS (${items.length}) ===');
+    for (final e in items) {
+      debugPrint('  ${e['employee_name']} | $field: ${e[field]}');
+    }
+    _currentPage = 0;
+    _loaded = false;
+    init();
   }
 
   void clearAllFilters() {
     _colFilters.clear();
-    notifyListeners();
+    _currentPage = 0;
+    _loaded = false;
+    init();
   }
 
   void toggleColumn(String key) {
@@ -213,18 +241,24 @@ class CompanyEmployeesViewModel extends BaseViewModel {
   Future<void> init() async {
     if (!_loaded) setBusy(true);
     fetchError = null;
+    _user ??= await _api.getStoredUser();
+    if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
     try {
+      final backendFilters = Map.fromEntries(
+        _colFilters.entries.where((e) => !_clientSideFilterFields.contains(e.key)),
+      );
       final result = await _api.getEmployeesPaged(
         tab: _tab,
         page: _currentPage,
         rowsPerPage: _rowsPerPage,
+        colFilters: backendFilters,
       );
       _items = List<Map<String, dynamic>>.from(result['data'] as List);
       _total = result['total'] as int;
       _loaded = true;
       debugPrint('=== EMPLOYEES DATA ===');
-      debugPrint('Total: $_total');
-      for (final e in _items) {
+      debugPrint('Backend total: $_total | After filters: ${items.length}');
+      for (final e in items) {
         debugPrint(e.toString());
       }
       debugPrint('=== END EMPLOYEES ===');
