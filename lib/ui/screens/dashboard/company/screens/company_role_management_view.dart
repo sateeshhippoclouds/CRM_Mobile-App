@@ -9,8 +9,15 @@ import 'company_role_management_viewmodel.dart';
 
 // Module order + display labels
 const _modules = [
-  'employees', 'bills', 'masters', 'leads',
-  'clients', 'rolemanagement', 'services', 'followup', 'task',
+  'employees',
+  'bills',
+  'masters',
+  'leads',
+  'clients',
+  'rolemanagement',
+  'services',
+  'followup',
+  'task',
 ];
 const _moduleLabels = {
   'employees': 'Employees',
@@ -74,8 +81,8 @@ class _RolesBodyState extends State<_RolesBody> {
     if (_query.isEmpty) return widget.model.roles;
     final q = _query.toLowerCase();
     return widget.model.roles
-        .where((r) =>
-            (r['role_name']?.toString() ?? '').toLowerCase().contains(q))
+        .where(
+            (r) => (r['role_name']?.toString() ?? '').toLowerCase().contains(q))
         .toList();
   }
 
@@ -93,10 +100,10 @@ class _RolesBodyState extends State<_RolesBody> {
                   onChanged: (v) => setState(() => _query = v),
                   decoration: InputDecoration(
                     hintText: 'Search roles...',
-                    hintStyle: const TextStyle(
-                        color: Color(0xff9E9E9E), fontSize: 14),
-                    suffixIcon: const Icon(Icons.search,
-                        color: Color(0xff9E9E9E)),
+                    hintStyle:
+                        const TextStyle(color: Color(0xff9E9E9E), fontSize: 14),
+                    suffixIcon:
+                        const Icon(Icons.search, color: Color(0xff9E9E9E)),
                     filled: true,
                     fillColor: Colors.white,
                     contentPadding: const EdgeInsets.symmetric(
@@ -189,8 +196,8 @@ class _RolesBodyState extends State<_RolesBody> {
                               role: _filtered[i],
                               canUpdate: widget.model.canUpdate,
                               canDelete: widget.model.canDelete,
-                              onView: () => _showPermissionsDialog(
-                                  context, _filtered[i]),
+                              onView: () =>
+                                  _showPermissionsDialog(context, _filtered[i]),
                               onEdit: () => _showEditDialog(
                                   context, widget.model, _filtered[i]),
                               onDelete: () => _confirmDelete(
@@ -231,8 +238,7 @@ class _RolesBodyState extends State<_RolesBody> {
     );
   }
 
-  void _showPermissionsDialog(
-      BuildContext context, Map<String, dynamic> role) {
+  void _showPermissionsDialog(BuildContext context, Map<String, dynamic> role) {
     showDialog(
       context: context,
       builder: (_) => _PermissionsViewDialog(role: role),
@@ -244,17 +250,16 @@ class _RolesBodyState extends State<_RolesBody> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
         title: const Text('Delete Role'),
-        content: Text(
-            'Delete "${role['role_name']}"? This cannot be undone.'),
+        content: Text('Delete "${role['role_name']}"? This cannot be undone.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete',
-                style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -399,8 +404,7 @@ class _RoleRow extends StatelessWidget {
           SizedBox(
             width: 60,
             child: Text('$index',
-                style: const TextStyle(
-                    fontSize: 14, color: Color(0xff6B7280))),
+                style: const TextStyle(fontSize: 14, color: Color(0xff6B7280))),
           ),
           Expanded(
             child: Text(name,
@@ -463,24 +467,23 @@ class _PermissionsViewDialog extends StatelessWidget {
     final selfOnly = role['self_only'] == true;
 
     return Dialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Title
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Text('Permissions for $name',
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
           const Divider(height: 1),
           // Table header
           Container(
             color: const Color(0xffF8F9FB),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: const Row(
               children: [
                 Expanded(
@@ -579,8 +582,7 @@ class _PermRow extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -594,8 +596,8 @@ class _PermRow extends StatelessWidget {
                 flex: 3,
                 child: active.isEmpty
                     ? const Text('No permissions',
-                        style: TextStyle(
-                            fontSize: 12, color: Color(0xff9CA3AF)))
+                        style:
+                            TextStyle(fontSize: 12, color: Color(0xff9CA3AF)))
                     : Wrap(
                         spacing: 6,
                         runSpacing: 4,
@@ -653,8 +655,7 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
         text: widget.existing?['role_name']?.toString() ?? '');
     _selfOnly = widget.existing?['self_only'] == true;
 
-    final ep =
-        widget.existing?['permissions'] as Map<String, dynamic>? ?? {};
+    final ep = widget.existing?['permissions'] as Map<String, dynamic>? ?? {};
     _permissions = {
       for (final m in _modules)
         m: {
@@ -688,8 +689,7 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
       await widget.onSubmit(data);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() =>
-          _error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -699,8 +699,8 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
     return Dialog(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Form(
@@ -747,20 +747,17 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
                   fillColor: const Color(0xffF8F9FB),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: Color(0xffE5E7EB)),
+                    borderSide: const BorderSide(color: Color(0xffE5E7EB)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: Color(0xffE5E7EB)),
+                    borderSide: const BorderSide(color: Color(0xffE5E7EB)),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Required'
-                    : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
 
@@ -770,7 +767,10 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
                     perms: _permissions[m]!,
                     onChanged: (key, val) => setState(() {
                       _permissions[m]![key] = val;
-                      if (val && (key == 'can_write' || key == 'can_update' || key == 'can_delete')) {
+                      if (val &&
+                          (key == 'can_write' ||
+                              key == 'can_update' ||
+                              key == 'can_delete')) {
                         _permissions[m]!['can_read'] = true;
                       } else if (!val && key == 'can_read') {
                         _permissions[m]!['can_write'] = false;
@@ -800,8 +800,7 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
 
               if (_error != null) ...[
                 Text(_error!,
-                    style: const TextStyle(
-                        color: Colors.red, fontSize: 13)),
+                    style: const TextStyle(color: Colors.red, fontSize: 13)),
                 const SizedBox(height: 8),
               ],
 
@@ -913,15 +912,14 @@ class _CheckItem extends StatelessWidget {
           child: Checkbox(
             value: value,
             activeColor: const Color(0xff3756DF),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
             onChanged: (v) => onChanged(v ?? false),
           ),
         ),
         const SizedBox(width: 4),
         Text(label,
-            style: const TextStyle(
-                fontSize: 12, color: Color(0xff374151))),
+            style: const TextStyle(fontSize: 12, color: Color(0xff374151))),
       ],
     );
   }
@@ -946,8 +944,7 @@ class _ErrorBody extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 12),
-            ElevatedButton(
-                onPressed: onRetry, child: const Text('Retry')),
+            ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
       ),

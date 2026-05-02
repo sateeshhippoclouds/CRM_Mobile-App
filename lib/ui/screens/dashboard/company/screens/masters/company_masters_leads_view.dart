@@ -69,6 +69,9 @@ class CompanyMastersLeadsView extends StatelessWidget {
                                       model.editItem(id, 1, v),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 1),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                                 MasterSimpleTab(
                                   items: model.interestLevels,
@@ -79,6 +82,9 @@ class CompanyMastersLeadsView extends StatelessWidget {
                                       model.editItem(id, 2, v),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 2),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                                 MasterSimpleTab(
                                   items: model.leadStages,
@@ -89,6 +95,9 @@ class CompanyMastersLeadsView extends StatelessWidget {
                                       model.editItem(id, 3, v),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 3),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                                 MasterSimpleTab(
                                   items: model.categories,
@@ -99,6 +108,9 @@ class CompanyMastersLeadsView extends StatelessWidget {
                                       model.editItem(id, 4, v),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 4),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                               ],
                             ),

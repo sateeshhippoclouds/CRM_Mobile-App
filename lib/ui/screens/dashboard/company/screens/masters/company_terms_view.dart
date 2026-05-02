@@ -65,6 +65,9 @@ class CompanyTermsView extends StatelessWidget {
                                       model.editItem(id, 1, title, notes),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 1),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                                 MasterTermsTab(
                                   items: model.clientQuotations,
@@ -75,6 +78,9 @@ class CompanyTermsView extends StatelessWidget {
                                       model.editItem(id, 2, title, notes),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 2),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                               ],
                             ),

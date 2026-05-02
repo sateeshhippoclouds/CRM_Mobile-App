@@ -55,6 +55,9 @@ class MasterSimpleTab extends StatefulWidget {
     required this.onAdd,
     required this.onEdit,
     required this.onDelete,
+    this.canWrite = true,
+    this.canUpdate = true,
+    this.canDelete = true,
   });
 
   final List<Map<String, dynamic>> items;
@@ -63,6 +66,9 @@ class MasterSimpleTab extends StatefulWidget {
   final Future<void> Function(String value) onAdd;
   final Future<void> Function(int id, String value) onEdit;
   final Future<void> Function(int id) onDelete;
+  final bool canWrite;
+  final bool canUpdate;
+  final bool canDelete;
 
   @override
   State<MasterSimpleTab> createState() => _MasterSimpleTabState();
@@ -106,68 +112,71 @@ class _MasterSimpleTabState extends State<MasterSimpleTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ctrl,
-                  decoration: InputDecoration(
-                    hintText: widget.hintText,
-                    hintStyle: const TextStyle(
-                        color: Color(0xff9E9E9E), fontSize: 14),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          const BorderSide(color: Color(0xffE5E7EB)),
+        if (widget.canWrite)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    decoration: InputDecoration(
+                      hintText: widget.hintText,
+                      hintStyle: const TextStyle(
+                          color: Color(0xff9E9E9E), fontSize: 14),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: Color(0xffE5E7EB)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: Color(0xffE5E7EB)),
+                      ),
+                      errorText: _addError,
+                      errorStyle: const TextStyle(fontSize: 11),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          const BorderSide(color: Color(0xffE5E7EB)),
-                    ),
-                    errorText: _addError,
-                    errorStyle: const TextStyle(fontSize: 11),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton(
-                onPressed: _adding ? null : _handleAdd,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _kBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  elevation: 0,
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: _adding ? null : _handleAdd,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  child: _adding
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('ADD',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 13)),
                 ),
-                child: _adding
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Text('ADD',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         Expanded(
           child: _MasterTable(
             columnLabel: widget.columnLabel,
             items: widget.items,
             onEdit: (id, val) => _showEditDialog(context, id, val),
             onDelete: (id, val) => _confirmDelete(context, id, val),
+            canUpdate: widget.canUpdate,
+            canDelete: widget.canDelete,
           ),
         ),
       ],
@@ -187,6 +196,7 @@ class _MasterSimpleTabState extends State<MasterSimpleTab> {
     final ok = await showDialog<bool>(
       context: ctx,
       builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
         title: const Text('Delete'),
         content: Text('Delete "$val"? This cannot be undone.'),
         actions: [
@@ -226,6 +236,9 @@ class MasterTermsTab extends StatefulWidget {
     required this.onAdd,
     required this.onEdit,
     required this.onDelete,
+    this.canWrite = true,
+    this.canUpdate = true,
+    this.canDelete = true,
   });
 
   final List<Map<String, dynamic>> items;
@@ -233,6 +246,9 @@ class MasterTermsTab extends StatefulWidget {
   final Future<void> Function(String title, List<String> notes) onAdd;
   final Future<void> Function(int id, String title, List<String> notes) onEdit;
   final Future<void> Function(int id) onDelete;
+  final bool canWrite;
+  final bool canUpdate;
+  final bool canDelete;
 
   @override
   State<MasterTermsTab> createState() => _MasterTermsTabState();
@@ -243,34 +259,35 @@ class _MasterTermsTabState extends State<MasterTermsTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () => _showFormDialog(null),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                    color: _kBlue,
-                    borderRadius: BorderRadius.circular(10)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.add, color: Colors.white, size: 18),
-                    const SizedBox(width: 4),
-                    Text(widget.addButtonLabel,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12)),
-                  ],
+        if (widget.canWrite)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: () => _showFormDialog(null),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                      color: _kBlue,
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.add, color: Colors.white, size: 18),
+                      const SizedBox(width: 4),
+                      Text(widget.addButtonLabel,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12)),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
         const SizedBox(height: 12),
         Expanded(
           child: Container(
@@ -372,24 +389,28 @@ class _MasterTermsTabState extends State<MasterTermsTab> {
                                               color: Color(0xff22C55E),
                                               size: 20),
                                         ),
-                                        const SizedBox(width: 10),
-                                        GestureDetector(
-                                          onTap: () =>
-                                              _showFormDialog(item),
-                                          child: const Icon(
-                                              Icons.edit_rounded,
-                                              color: _kBlue,
-                                              size: 20),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        GestureDetector(
-                                          onTap: () =>
-                                              _confirmDelete(id, title),
-                                          child: const Icon(
-                                              Icons.delete_rounded,
-                                              color: Color(0xffEF4444),
-                                              size: 20),
-                                        ),
+                                        if (widget.canUpdate) ...[
+                                          const SizedBox(width: 10),
+                                          GestureDetector(
+                                            onTap: () =>
+                                                _showFormDialog(item),
+                                            child: const Icon(
+                                                Icons.edit_rounded,
+                                                color: _kBlue,
+                                                size: 20),
+                                          ),
+                                        ],
+                                        if (widget.canDelete) ...[
+                                          const SizedBox(width: 10),
+                                          GestureDetector(
+                                            onTap: () =>
+                                                _confirmDelete(id, title),
+                                            child: const Icon(
+                                                Icons.delete_rounded,
+                                                color: Color(0xffEF4444),
+                                                size: 20),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -416,6 +437,7 @@ class _MasterTermsTabState extends State<MasterTermsTab> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
         title: Text(title,
             style: const TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w700)),
@@ -475,6 +497,7 @@ class _MasterTermsTabState extends State<MasterTermsTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
         title: const Text('Delete'),
         content: Text('Delete "$title"? This cannot be undone.'),
         actions: [
@@ -512,12 +535,16 @@ class _MasterTable extends StatelessWidget {
     required this.items,
     required this.onEdit,
     required this.onDelete,
+    this.canUpdate = true,
+    this.canDelete = true,
   });
 
   final String columnLabel;
   final List<Map<String, dynamic>> items;
   final void Function(int id, String val) onEdit;
   final void Function(int id, String val) onDelete;
+  final bool canUpdate;
+  final bool canDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -545,11 +572,12 @@ class _MasterTable extends StatelessWidget {
                     width: 50,
                     child: Text('S.No', style: _kHeaderStyle)),
                 Expanded(child: Text(columnLabel, style: _kHeaderStyle)),
-                const SizedBox(
-                    width: 90,
-                    child: Text('Actions',
-                        textAlign: TextAlign.center,
-                        style: _kHeaderStyle)),
+                if (canUpdate || canDelete)
+                  const SizedBox(
+                      width: 90,
+                      child: Text('Actions',
+                          textAlign: TextAlign.center,
+                          style: _kHeaderStyle)),
               ],
             ),
           ),
@@ -578,30 +606,34 @@ class _MasterTable extends StatelessWidget {
                                     style: _kCellStyle)),
                             Expanded(
                                 child: Text(val, style: _kValueStyle)),
-                            SizedBox(
-                              width: 90,
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  GestureDetector(
-                                    onTap: () => onEdit(id, val),
-                                    child: const Icon(
-                                        Icons.edit_rounded,
-                                        color: _kBlue,
-                                        size: 20),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  GestureDetector(
-                                    onTap: () => onDelete(id, val),
-                                    child: const Icon(
-                                        Icons.delete_rounded,
-                                        color: Color(0xffEF4444),
-                                        size: 20),
-                                  ),
-                                ],
+                            if (canUpdate || canDelete)
+                              SizedBox(
+                                width: 90,
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                  children: [
+                                    if (canUpdate)
+                                      GestureDetector(
+                                        onTap: () => onEdit(id, val),
+                                        child: const Icon(
+                                            Icons.edit_rounded,
+                                            color: _kBlue,
+                                            size: 20),
+                                      ),
+                                    if (canUpdate && canDelete)
+                                      const SizedBox(width: 16),
+                                    if (canDelete)
+                                      GestureDetector(
+                                        onTap: () => onDelete(id, val),
+                                        child: const Icon(
+                                            Icons.delete_rounded,
+                                            color: Color(0xffEF4444),
+                                            size: 20),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       );
@@ -671,6 +703,7 @@ class _SimpleEditDialogState extends State<_SimpleEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       title: const Text('Edit',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       content: TextField(
@@ -794,6 +827,7 @@ class _TermsFormDialogState extends State<_TermsFormDialog> {
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
     return Dialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: SingleChildScrollView(

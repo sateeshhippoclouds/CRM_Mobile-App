@@ -65,6 +65,9 @@ class CompanyOthersView extends StatelessWidget {
                                       model.editItem(id, 1, v),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 1),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                                 MasterSimpleTab(
                                   items: model.serviceCategories,
@@ -75,6 +78,9 @@ class CompanyOthersView extends StatelessWidget {
                                       model.editItem(id, 2, v),
                                   onDelete: (id) =>
                                       model.deleteItem(id, 2),
+                                  canWrite: model.canWrite,
+                                  canUpdate: model.canUpdate,
+                                  canDelete: model.canDelete,
                                 ),
                               ],
                             ),

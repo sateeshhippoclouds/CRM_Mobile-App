@@ -75,6 +75,7 @@ class _CompanyClientsViewState extends State<CompanyClientsView> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
         title: const Text('Delete Client',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         content: Text('Are you sure you want to delete $name?'),
@@ -527,6 +528,7 @@ class _ColFilterDialogState extends State<_ColFilterDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       title: Text(
         'Filter by ${widget.col.label}',
         style: const TextStyle(
@@ -825,6 +827,7 @@ class _CustomizeColumnsDialogState extends State<_CustomizeColumnsDialog> {
         toggleable.every((c) => widget.model.colVisible[c.key] ?? true);
 
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       contentPadding: EdgeInsets.zero,
       title: Row(
         children: [
@@ -990,8 +993,8 @@ class _AddClientDialogState extends State<_AddClientDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

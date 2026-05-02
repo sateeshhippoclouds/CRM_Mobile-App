@@ -1,6 +1,8 @@
 import 'package:stacked/stacked.dart';
 
 import '../../../../../../app/app.locator.dart';
+import '../../../../../../models/permissions_model.dart';
+import '../../../../../../models/token_response_model.dart';
 import '../../../../../../services/api_services.dart';
 
 class CompanyMastersClientsViewModel extends BaseViewModel {
@@ -10,6 +12,16 @@ class CompanyMastersClientsViewModel extends BaseViewModel {
   List<Map<String, dynamic>> paymentTerms = [];
   String? fetchError;
   bool _loaded = false;
+
+  TokenResponseModel? _user;
+  PermissionsModel? _permissions;
+  bool get _isEmployee => _user?.userType == 'employee';
+  PermissionsModel get _perms => _isEmployee
+      ? (_permissions ?? PermissionsModel.companyDefault)
+      : PermissionsModel.companyDefault;
+  bool get canWrite => _perms.masters.canWrite;
+  bool get canUpdate => _perms.masters.canUpdate;
+  bool get canDelete => _perms.masters.canDelete;
 
   Future<void> _fetch() async {
     final data = await _api.getClientMasters();
@@ -21,6 +33,8 @@ class CompanyMastersClientsViewModel extends BaseViewModel {
     if (!_loaded) setBusy(true);
     fetchError = null;
     try {
+      _user ??= await _api.getStoredUser();
+      if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
       await _fetch();
       _loaded = true;
     } catch (e) {

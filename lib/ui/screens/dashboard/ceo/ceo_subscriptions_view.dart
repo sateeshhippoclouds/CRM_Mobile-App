@@ -450,6 +450,7 @@ class _SubscriptionDialog extends StatelessWidget {
       onViewModelReady: (dm) => dm.init(),
       builder: (context, dm, _) {
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(vertical: 24),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: SingleChildScrollView(

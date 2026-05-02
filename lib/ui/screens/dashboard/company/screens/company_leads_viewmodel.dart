@@ -16,6 +16,16 @@ class LeadColumnDef {
   final bool alwaysVisible;
 }
 
+class FollowupColumnDef {
+  const FollowupColumnDef(this.label, this.key, this.width,
+      {this.filterable = true, this.alwaysVisible = false});
+  final String label;
+  final String key;
+  final double width;
+  final bool filterable;
+  final bool alwaysVisible;
+}
+
 class CompanyLeadsViewModel extends BaseViewModel {
   final _api = locator<HippoAuthService>();
 
@@ -27,9 +37,13 @@ class CompanyLeadsViewModel extends BaseViewModel {
       ? (_permissions ?? PermissionsModel.companyDefault)
       : PermissionsModel.companyDefault;
 
+  bool get canRead => _perms.leads.canRead;
   bool get canWrite => _perms.leads.canWrite;
   bool get canUpdate => _perms.leads.canUpdate;
   bool get canDelete => _perms.leads.canDelete;
+  bool get canReadFollowup => _perms.followup.canRead;
+  bool get canWriteFollowup => _perms.followup.canWrite;
+  bool get canUpdateFollowup => _perms.followup.canUpdate;
   bool get canDeleteFollowup => _perms.followup.canDelete;
 
   // ── Leads state ───────────────────────────────────────────────────────────────
@@ -74,6 +88,24 @@ class CompanyLeadsViewModel extends BaseViewModel {
   int _followupsRowsPerPage = 25;
   int _followupsTotal = 0;
 
+  final Map<String, String> _followupColFilters = {};
+  final Set<dynamic> _followupSelectedIds = {};
+  final Map<String, bool> _followupColVisible = {
+    'employee_name': true,
+    'status': true,
+    'svc_name': true,
+    'svc_duration': false,
+    'svc_base_price': true,
+    'svc_tax_rate': false,
+    'svc_original_duration': false,
+    'nextFollowUpDate': true,
+    'wantAddServices': true,
+    'negotiate': true,
+    'quotation_title': true,
+    'created_at': true,
+    'notes': false,
+  };
+
   // ── Static config ─────────────────────────────────────────────────────────────
   static const List<Map<String, dynamic>> pipelineOptions = [
     {'label': 'Pipeline', 'value': 'pipeline', 'color': 0xff3B82F6},
@@ -83,6 +115,26 @@ class CompanyLeadsViewModel extends BaseViewModel {
   ];
 
   static const List<int> rowsPerPageOptions = [25, 50, 100];
+
+  static const List<FollowupColumnDef> allFollowupColumns = [
+    FollowupColumnDef('', 'checkbox', 48, filterable: false, alwaysVisible: true),
+    FollowupColumnDef('S.No', 'sno', 60, filterable: false, alwaysVisible: true),
+    FollowupColumnDef('Lead Name', 'lead_name', 180, alwaysVisible: true),
+    FollowupColumnDef('Assigned To', 'employee_name', 150),
+    FollowupColumnDef('Status', 'status', 130),
+    FollowupColumnDef('Service Name', 'svc_name', 180, filterable: false),
+    FollowupColumnDef('Duration', 'svc_duration', 90, filterable: false),
+    FollowupColumnDef('Base Price', 'svc_base_price', 110, filterable: false),
+    FollowupColumnDef('Tax', 'svc_tax_rate', 90, filterable: false),
+    FollowupColumnDef('Req Duration', 'svc_original_duration', 110, filterable: false),
+    FollowupColumnDef('Next Follow-Up', 'nextFollowUpDate', 130, filterable: false),
+    FollowupColumnDef('Add Services', 'wantAddServices', 110),
+    FollowupColumnDef('Negotiate', 'negotiate', 100),
+    FollowupColumnDef('Quotation', 'quotation_title', 150),
+    FollowupColumnDef('Created On', 'created_at', 130, filterable: false),
+    FollowupColumnDef('Notes', 'notes', 180),
+    FollowupColumnDef('Action', 'action', 90, filterable: false, alwaysVisible: true),
+  ];
 
   // Fields NOT in backend fieldToColumnMap — filtered client-side
   static const _clientSideFilterFields = {'alternate_number', 'address'};
@@ -170,6 +222,26 @@ class CompanyLeadsViewModel extends BaseViewModel {
       _followupsTotal == 0 ? 0 : _followupsPage * _followupsRowsPerPage + 1;
   int get followupsPageEnd =>
       _followupsPage * _followupsRowsPerPage + followups.length;
+
+  bool get followupHasActiveFilters => _followupColFilters.isNotEmpty;
+  Map<String, String> get followupColFilters => Map.unmodifiable(_followupColFilters);
+  Map<String, bool> get followupColVisible => Map.unmodifiable(_followupColVisible);
+  bool get followupHasSelection => _followupSelectedIds.isNotEmpty;
+  int get followupSelectedCount => _followupSelectedIds.length;
+
+  bool followupIsSelected(dynamic id) => _followupSelectedIds.contains(id);
+
+  bool get allFollowupCurrentSelected {
+    if (followups.isEmpty) return false;
+    return followups.every((e) => _followupSelectedIds.contains(e['id']));
+  }
+
+  bool get someFollowupCurrentSelected =>
+      followups.any((e) => _followupSelectedIds.contains(e['id']));
+
+  List<FollowupColumnDef> get visibleFollowupColumns => allFollowupColumns
+      .where((c) => c.alwaysVisible || (_followupColVisible[c.key] ?? true))
+      .toList();
 
   // Fields from backend: id, lead_name, employee_name, followUpDate, services,
   // status, notes, nextFollowUpDate, negotiate, wantAddServices,
@@ -284,6 +356,8 @@ class CompanyLeadsViewModel extends BaseViewModel {
         page: _currentPage,
         rowsPerPage: _rowsPerPage,
         colFilters: backendFilters,
+        selfOnly: _isEmployee && _perms.selfOnly,
+        employeeId: _user?.employeeId?.toString(),
       );
       _items = List<Map<String, dynamic>>.from(result['data'] as List);
       _total = result['total'] as int;
@@ -326,14 +400,93 @@ class CompanyLeadsViewModel extends BaseViewModel {
     if (followupsHasPrev) { _followupsPage--; initFollowups(); }
   }
 
+  void setFollowupColFilter(String field, String value) {
+    if (value.trim().isEmpty) {
+      _followupColFilters.remove(field);
+    } else {
+      _followupColFilters[field] = value.trim();
+    }
+    _followupsPage = 0;
+    _followupsLoaded = false;
+    initFollowups();
+  }
+
+  void clearAllFollowupFilters() {
+    _followupColFilters.clear();
+    _followupsPage = 0;
+    _followupsLoaded = false;
+    initFollowups();
+  }
+
+  void toggleFollowupColumn(String key) {
+    _followupColVisible[key] = !(_followupColVisible[key] ?? true);
+    notifyListeners();
+  }
+
+  void setAllFollowupColumnsVisible(bool visible) {
+    for (final key in _followupColVisible.keys.toList()) {
+      _followupColVisible[key] = visible;
+    }
+    notifyListeners();
+  }
+
+  void toggleFollowupRowSelection(dynamic id) {
+    if (_followupSelectedIds.contains(id)) {
+      _followupSelectedIds.remove(id);
+    } else {
+      _followupSelectedIds.add(id);
+    }
+    notifyListeners();
+  }
+
+  void toggleFollowupSelectAll() {
+    if (allFollowupCurrentSelected) {
+      for (final e in followups) { _followupSelectedIds.remove(e['id']); }
+    } else {
+      for (final e in followups) { _followupSelectedIds.add(e['id']); }
+    }
+    notifyListeners();
+  }
+
+  void clearFollowupSelection() {
+    _followupSelectedIds.clear();
+    notifyListeners();
+  }
+
+  String buildFollowupCsvContent() {
+    final exportCols = visibleFollowupColumns
+        .where((c) => c.key != 'checkbox' && c.key != 'action')
+        .toList();
+    final exportItems = followupHasSelection
+        ? _followupItems.where((e) => _followupSelectedIds.contains(e['id'])).toList()
+        : _followupItems;
+    final headers = exportCols.map((c) => c.label).toList();
+    final rows = <List<String>>[headers];
+    for (int i = 0; i < exportItems.length; i++) {
+      final item = exportItems[i];
+      rows.add(exportCols.map((c) {
+        if (c.key == 'sno') return '${i + 1}';
+        return item[c.key]?.toString() ?? '';
+      }).toList());
+    }
+    return rows
+        .map((r) => r.map((c) => '"${c.replaceAll('"', '""')}"').join(','))
+        .join('\n');
+  }
+
   Future<void> initFollowups() async {
     _followupsBusy = true;
     fetchFollowupsError = null;
     notifyListeners();
+    _user ??= await _api.getStoredUser();
+    if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
     try {
       final result = await _api.getFollowupsPaged(
         page: _followupsPage,
         rowsPerPage: _followupsRowsPerPage,
+        colFilters: _followupColFilters,
+        selfOnly: _isEmployee && _perms.selfOnly,
+        employeeId: _user?.employeeId?.toString(),
       );
       _followupItems = List<Map<String, dynamic>>.from(result['data'] as List);
       _followupsTotal = result['total'] as int;
@@ -349,6 +502,28 @@ class CompanyLeadsViewModel extends BaseViewModel {
     } finally {
       _followupsBusy = false;
       notifyListeners();
+    }
+  }
+
+  Future<String?> addFollowup(Map<String, dynamic> data) async {
+    try {
+      await _api.addFollowup(data);
+      _followupsLoaded = false;
+      await initFollowups();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> updateFollowup(dynamic id, Map<String, dynamic> data) async {
+    try {
+      await _api.updateFollowup(id, data);
+      _followupsLoaded = false;
+      await initFollowups();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
     }
   }
 

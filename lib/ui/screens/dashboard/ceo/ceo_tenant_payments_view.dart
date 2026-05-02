@@ -387,6 +387,7 @@ class _RecordPaymentDialog extends StatelessWidget {
       ),
       builder: (context, dm, _) {
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(vertical: 24),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
@@ -637,6 +638,7 @@ class _PaymentHistoryDialog extends StatelessWidget {
         final balance = (totalOwed - totalPaid).clamp(0, double.infinity);
 
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(vertical: 24),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(

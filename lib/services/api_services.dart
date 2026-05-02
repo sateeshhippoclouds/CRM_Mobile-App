@@ -18,6 +18,11 @@ class HippoAuthService {
   static const String _permissionsKey = 'hippo_permissions';
   static const _timeout = Duration(seconds: 15);
 
+  // Counts concurrent in-flight requests; listen to show/hide global loaders.
+  final ValueNotifier<int> _activeRequests = ValueNotifier(0);
+  ValueNotifier<int> get loadingNotifier => _activeRequests;
+  bool get isLoading => _activeRequests.value > 0;
+
   static const String _ceoStaticToken =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoic2F0ZWVzaCIsImVtYWlsIjoic2F0ZWVzaEBoaXBwb2Nsb3Vkcy5jb20iLCJyb2xlIjoiQ0VPIiwiY29tcGFueWlkIjoiaGlwcG8iLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwicGxhdGZvcm1fb3duZXIiOnRydWUsInVzZXJfdHlwZSI6ImNlb190YWJsZSIsImlhdCI6MTc3NjY4MzI5MCwiZXhwIjoxODA4MjE5MjkwfQ.8vJSu9AGKg8uGurDINA2OdoMeAsBY6s8Ma1FLwu7BuM';
 
@@ -55,8 +60,8 @@ class HippoAuthService {
           )
           .timeout(_timeout);
 
-      debugPrint('Status : ${loginRes.statusCode}');
-      debugPrint('Body   : ${loginRes.body}');
+      debugPrint('  Status  : ${loginRes.statusCode}');
+      debugPrint('  Body    : ${loginRes.body.length > 800 ? '${loginRes.body.substring(0, 800)}…' : loginRes.body}');
 
       if (loginRes.statusCode == 401 || loginRes.statusCode == 403) {
         throw Exception('Invalid email or password.');
@@ -145,8 +150,8 @@ class HippoAuthService {
         },
       ).timeout(_timeout);
 
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
+      debugPrint('  Status  : ${res.statusCode}');
+      debugPrint('  Body    : ${res.body.length > 800 ? '${res.body.substring(0, 800)}…' : res.body}');
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -200,7 +205,6 @@ class HippoAuthService {
   Future<void> fetchAndStorePermissions() async {
     try {
       final res = await authenticatedRequest('/rolepermissions');
-      debugPrint('── PERMISSIONS STATUS: ${res.statusCode} ──');
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body) as Map<String, dynamic>;
         if (decoded.containsKey('permissions')) {
@@ -231,6 +235,7 @@ class HippoAuthService {
     Map<String, dynamic>? body,
     Map<String, String>? queryParams,
   }) async {
+    _activeRequests.value++;
     try {
       final token = await getToken();
       if (token == null) {
@@ -250,10 +255,11 @@ class HippoAuthService {
           : <String, String>{};
       final mergedParams = {...inlineParams, ...?queryParams};
 
-      // ✅ FIX: derive scheme & host from _baseUrl instead of hardcoding them
       final uri = Uri.parse('$_baseUrl$path').replace(
         queryParameters: mergedParams.isEmpty ? null : mergedParams,
       );
+
+      if (body != null) debugPrint('  Request : $body');
 
       late http.Response response;
       switch (method.toUpperCase()) {
@@ -274,26 +280,30 @@ class HippoAuthService {
           response = await http.get(uri, headers: headers).timeout(_timeout);
       }
 
+      debugPrint('  Status  : ${response.statusCode}');
+      debugPrint('  Body    : ${response.body.length > 800 ? '${response.body.substring(0, 800)}…' : response.body}');
+
       if (response.statusCode == 401) {
         await logout();
         throw Exception('Session expired. Please login again.');
       }
       return response;
     } on SocketException {
+      debugPrint('  [ERROR] No internet connection');
       throw Exception('No internet connection. Please check your network.');
     } on TimeoutException {
+      debugPrint('  [ERROR] Request timed out');
       throw Exception('Request timed out. Please try again.');
     } on Exception {
       rethrow;
+    } finally {
+      _activeRequests.value--;
     }
   }
 
   Future<Map<String, dynamic>> getCeoDashboard() async {
     try {
-      debugPrint('── GET /dashboards/ceo ─────────────────────────────────');
       final res = await authenticatedRequest('/dashboards/ceo');
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode != 200) {
         throw Exception('Failed to load dashboard (${res.statusCode}).');
       }
@@ -307,10 +317,7 @@ class HippoAuthService {
 
   Future<List<SubscriptionModel>> getSubscriptions() async {
     try {
-      debugPrint('── GET /admin-subscription ─────────────────────────────');
       final res = await authenticatedRequest('/admin-subscription');
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode != 200) {
         throw Exception('Failed to load subscriptions (${res.statusCode}).');
       }
@@ -327,15 +334,12 @@ class HippoAuthService {
 
   Future<void> createSubscription(Map<String, dynamic> data) async {
     try {
-      debugPrint('── POST /admin-subscription ────────────────────────────');
       debugPrint('Body   : $data');
       final res = await authenticatedRequest(
         '/admin-subscription',
         method: 'POST',
         body: data,
       );
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception(_parseMessage(res.body));
       }
@@ -346,15 +350,12 @@ class HippoAuthService {
 
   Future<void> updateSubscription(int id, Map<String, dynamic> data) async {
     try {
-      debugPrint('── PUT /admin-subscriptions?id=$id ─────────────────────');
       debugPrint('Body   : $data');
       final res = await authenticatedRequest(
         '/admin-subscriptions?id=$id',
         method: 'PUT',
         body: data,
       );
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception(_parseMessage(res.body));
       }
@@ -365,13 +366,10 @@ class HippoAuthService {
 
   Future<void> deleteSubscription(int id) async {
     try {
-      debugPrint('── DELETE /admin-subscriptions?id=$id ──────────────────');
       final res = await authenticatedRequest(
         '/admin-subscriptions?id=$id',
         method: 'DELETE',
       );
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception(_parseMessage(res.body));
       }
@@ -382,10 +380,7 @@ class HippoAuthService {
 
   Future<List<TenantModel>> getTenants() async {
     try {
-      debugPrint('── GET /admin-tenants ───────────────────────────────────');
       final res = await authenticatedRequest('/admin-tenants');
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode != 200) {
         throw Exception(
             'Failed to load tenants (${res.statusCode}): ${res.body}');
@@ -415,12 +410,9 @@ class HippoAuthService {
 
   Future<void> createTenant(Map<String, dynamic> data) async {
     try {
-      debugPrint('── POST /admin-tenants ──────────────────────────────────');
       debugPrint('Body   : $data');
       final res = await authenticatedRequest('/admin-tenants',
           method: 'POST', body: data);
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception(_parseMessage(res.body));
       }
@@ -431,12 +423,9 @@ class HippoAuthService {
 
   Future<void> updateTenant(int id, Map<String, dynamic> data) async {
     try {
-      debugPrint('── PUT /admin-tenants?id=$id ────────────────────────────');
       debugPrint('Body   : $data');
       final res = await authenticatedRequest('/admin-tenants',
           method: 'PUT', body: data, queryParams: {'id': id.toString()});
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception(_parseMessage(res.body));
       }
@@ -447,15 +436,12 @@ class HippoAuthService {
 
   Future<void> createTenantPayment(Map<String, dynamic> data) async {
     try {
-      debugPrint('── POST /admin-tenant/payments ─────────────────────────');
       debugPrint('Body   : $data');
       final res = await authenticatedRequest(
         '/admin-tenant/payments',
         method: 'POST',
         body: data,
       );
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception(_parseMessage(res.body));
       }
@@ -466,10 +452,7 @@ class HippoAuthService {
 
   Future<List<Map<String, dynamic>>> getAllTenantPayments() async {
     try {
-      debugPrint('── GET /admin-tenants/payments/all ─────────────────────');
       final res = await authenticatedRequest('/admin-tenants/payments/all');
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode != 200) {
         throw Exception(
             'Failed to load all payments (${res.statusCode}): ${res.body}');
@@ -494,13 +477,10 @@ class HippoAuthService {
 
   Future<List<Map<String, dynamic>>> getTenantPayments(int tenantId) async {
     try {
-      debugPrint('── GET /admin-tenant/payments?tenant_id=$tenantId ──');
       final res = await authenticatedRequest(
         '/admin-tenant/payments',
         queryParams: {'tenant_id': tenantId.toString()},
       );
-      debugPrint('Status : ${res.statusCode}');
-      debugPrint('Body   : ${res.body}');
       if (res.statusCode != 200) {
         throw Exception(
             'Failed to load payments (${res.statusCode}): ${res.body}');
@@ -543,13 +523,10 @@ class HippoAuthService {
   Future<List<Map<String, dynamic>>> getRoles() async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
-    debugPrint('── GET /rolesmanagement?companyid=$companyId ──');
     final res = await authenticatedRequest(
       '/rolesmanagement',
       queryParams: {'companyid': companyId.toString()},
     );
-    debugPrint('Status : ${res.statusCode}');
-    debugPrint('Body   : ${res.body}');
     if (res.statusCode != 200) {
       throw Exception(_parseMessage(res.body));
     }
@@ -562,15 +539,12 @@ class HippoAuthService {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     final body = {...data, 'companyid': companyId};
-    debugPrint('── POST /rolesmanagement ──');
     debugPrint('Body sent: $body');
     final res = await authenticatedRequest(
       '/rolesmanagement',
       method: 'POST',
       body: body,
     );
-    debugPrint('Status : ${res.statusCode}');
-    debugPrint('Body   : ${res.body}');
     if (res.statusCode != 200 && res.statusCode != 201) {
       throw Exception(_parseMessage(res.body));
     }
@@ -580,29 +554,23 @@ class HippoAuthService {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     final body = {...data, 'companyid': companyId};
-    debugPrint('── PUT /rolesmanagement ──');
     debugPrint('Body sent: $body');
     final res = await authenticatedRequest(
       '/rolesmanagement',
       method: 'PUT',
       body: body,
     );
-    debugPrint('Status : ${res.statusCode}');
-    debugPrint('Body   : ${res.body}');
     if (res.statusCode != 200) {
       throw Exception(_parseMessage(res.body));
     }
   }
 
   Future<void> deleteRole(int roleId) async {
-    debugPrint('── DELETE /rolesmanagement?roleid=$roleId ──');
     final res = await authenticatedRequest(
       '/rolesmanagement',
       method: 'DELETE',
       queryParams: {'roleid': roleId.toString()},
     );
-    debugPrint('Status : ${res.statusCode}');
-    debugPrint('Body   : ${res.body}');
     if (res.statusCode != 200) {
       throw Exception(_parseMessage(res.body));
     }
@@ -802,6 +770,8 @@ class HippoAuthService {
     int page = 0,
     int rowsPerPage = 25,
     Map<String, String> colFilters = const {},
+    bool selfOnly = false,
+    String? employeeId,
   }) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
@@ -812,6 +782,10 @@ class HippoAuthService {
       'rowsPerPage': rowsPerPage.toString(),
     };
     if (tab.isNotEmpty) queryParams['tab'] = tab;
+    if (selfOnly && employeeId != null) {
+      queryParams['selfOnly'] = 'true';
+      queryParams['employeeid'] = employeeId;
+    }
     if (colFilters.isNotEmpty) {
       final filterList = colFilters.entries
           .map((e) => {'field': e.key, 'value': e.value})
@@ -873,13 +847,13 @@ class HippoAuthService {
   }
 
   // keep for followups tab
-  Future<List<Map<String, dynamic>>> getLeads() async {
+  Future<List<Map<String, dynamic>>> getLeads({String pipeline = 'pipeline'}) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
-    final res = await authenticatedRequest(
-      '/lead',
-      queryParams: {'companyid': companyId.toString()},
-    );
+    final tab = _pipelineTabMap[pipeline] ?? '';
+    final queryParams = <String, String>{'companyid': companyId.toString()};
+    if (tab.isNotEmpty) queryParams['tab'] = tab;
+    final res = await authenticatedRequest('/lead', queryParams: queryParams);
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
     final decoded = jsonDecode(res.body);
     if (decoded is Map) {
@@ -896,6 +870,8 @@ class HippoAuthService {
     int page = 0,
     int rowsPerPage = 25,
     Map<String, String> colFilters = const {},
+    bool selfOnly = false,
+    String? employeeId,
   }) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
@@ -904,6 +880,10 @@ class HippoAuthService {
       'currentpage': page.toString(),
       'rowsPerPage': rowsPerPage.toString(),
     };
+    if (selfOnly && employeeId != null) {
+      queryParams['selfOnly'] = 'true';
+      queryParams['employeeid'] = employeeId;
+    }
     if (colFilters.isNotEmpty) {
       final filterList = colFilters.entries
           .map((e) => {'field': e.key, 'value': e.value})
@@ -927,6 +907,29 @@ class HippoAuthService {
           : <Map<String, dynamic>>[],
       'total': total,
     };
+  }
+
+  Future<void> addFollowup(Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    final res = await authenticatedRequest('/followup', method: 'POST', body: data);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<void> updateFollowup(dynamic id, Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    final res = await authenticatedRequest(
+      '/followup',
+      method: 'PUT',
+      queryParams: {'id': id.toString()},
+      body: data,
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
   }
 
   Future<void> deleteFollowup(dynamic id) async {
@@ -1011,8 +1014,6 @@ class HippoAuthService {
       body: data,
     );
     debugPrint('=== ADD EMPLOYEE RESPONSE ===');
-    debugPrint('Status: ${res.statusCode}');
-    debugPrint('Body: ${res.body}');
     if (res.statusCode != 200 && res.statusCode != 201) {
       throw Exception(_parseMessage(res.body));
     }

@@ -404,6 +404,7 @@ class _PaymentHistoryDialog extends StatelessWidget {
       onViewModelReady: (vm) => vm.init(),
       builder: (context, vm, _) {
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(vertical: 24),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
@@ -716,6 +717,7 @@ class _TenantDialog extends StatelessWidget {
       onViewModelReady: (dm) => dm.init(),
       builder: (context, dm, _) {
         return Dialog(
+          insetPadding: const EdgeInsets.symmetric(vertical: 24),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(

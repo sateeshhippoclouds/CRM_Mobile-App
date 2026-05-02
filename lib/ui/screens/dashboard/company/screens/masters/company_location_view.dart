@@ -85,6 +85,7 @@ Future<bool> _confirmDelete(BuildContext ctx, String entity) async {
   final result = await showDialog<bool>(
     context: ctx,
     builder: (_) => AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text('Delete $entity'),
       content: const Text('Are you sure you want to delete this item?'),
@@ -184,9 +185,10 @@ Widget _tableHeader(List<String> cols) => Container(
 Widget _tableRow({
   required int index,
   required List<String> values,
-  required VoidCallback onEdit,
-  required VoidCallback onDelete,
+  VoidCallback? onEdit,
+  VoidCallback? onDelete,
 }) {
+  final showActions = onEdit != null || onDelete != null;
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
@@ -206,32 +208,36 @@ Widget _tableRow({
                   style: const TextStyle(
                       fontSize: 12, color: Color(0xff1F2937))),
             )),
-        SizedBox(
-          width: 80,
-          child: Row(
-            children: [
-              InkWell(
-                onTap: onEdit,
-                borderRadius: BorderRadius.circular(6),
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(Icons.edit_outlined,
-                      size: 16, color: Color(0xff3756DF)),
-                ),
-              ),
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: onDelete,
-                borderRadius: BorderRadius.circular(6),
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(Icons.delete_outline,
-                      size: 16, color: Colors.red),
-                ),
-              ),
-            ],
+        if (showActions)
+          SizedBox(
+            width: 80,
+            child: Row(
+              children: [
+                if (onEdit != null)
+                  InkWell(
+                    onTap: onEdit,
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.edit_outlined,
+                          size: 16, color: Color(0xff3756DF)),
+                    ),
+                  ),
+                if (onEdit != null && onDelete != null)
+                  const SizedBox(width: 4),
+                if (onDelete != null)
+                  InkWell(
+                    onTap: onDelete,
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.delete_outline,
+                          size: 16, color: Colors.red),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
       ],
     ),
   );
@@ -333,27 +339,34 @@ class _CountriesTabState extends State<_CountriesTab> {
   @override
   Widget build(BuildContext context) {
     final items = widget.model.countries;
+    final canWrite = widget.model.canWrite;
+    final canUpdate = widget.model.canUpdate;
+    final canDelete = widget.model.canDelete;
     return Column(
       children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ctrl,
-                  decoration: _inputDecoration('Add Country'),
-                  style: const TextStyle(fontSize: 13),
-                  onSubmitted: (_) => _add(),
+        if (canWrite)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    decoration: _inputDecoration('Add Country'),
+                    style: const TextStyle(fontSize: 13),
+                    onSubmitted: (_) => _add(),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _addButton(loading: _adding, onPressed: _adding ? null : _add),
-            ],
+                const SizedBox(width: 8),
+                _addButton(loading: _adding, onPressed: _adding ? null : _add),
+              ],
+            ),
           ),
-        ),
-        _tableHeader(const ['S.No', 'Country', 'Actions']),
+        _tableHeader(
+            canUpdate || canDelete
+                ? const ['S.No', 'Country', 'Actions']
+                : const ['S.No', 'Country']),
         Expanded(
           child: items.isEmpty
               ? const Center(
@@ -365,8 +378,10 @@ class _CountriesTabState extends State<_CountriesTab> {
                   itemBuilder: (_, i) => _tableRow(
                     index: i,
                     values: [items[i]['name'] as String],
-                    onEdit: () => _edit(items[i]),
-                    onDelete: () => _delete(items[i]['id'] as int),
+                    onEdit: canUpdate ? () => _edit(items[i]) : null,
+                    onDelete: canDelete
+                        ? () => _delete(items[i]['id'] as int)
+                        : null,
                   ),
                 ),
         ),
@@ -447,6 +462,9 @@ class _StatesTabState extends State<_StatesTab> {
   @override
   Widget build(BuildContext context) {
     final items = _filtered;
+    final canWrite = widget.model.canWrite;
+    final canUpdate = widget.model.canUpdate;
+    final canDelete = widget.model.canDelete;
     return Column(
       children: [
         Container(
@@ -463,31 +481,36 @@ class _StatesTabState extends State<_StatesTab> {
                   _ctrl.clear();
                 }),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      enabled: _filterCountryId != null,
-                      decoration: _inputDecoration('Add State'),
-                      style: const TextStyle(fontSize: 13),
-                      onSubmitted: (_) => _add(),
+              if (canWrite) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _ctrl,
+                        enabled: _filterCountryId != null,
+                        decoration: _inputDecoration('Add State'),
+                        style: const TextStyle(fontSize: 13),
+                        onSubmitted: (_) => _add(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _addButton(
-                    loading: _adding,
-                    onPressed: (_adding || _filterCountryId == null)
-                        ? null
-                        : _add,
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 8),
+                    _addButton(
+                      loading: _adding,
+                      onPressed: (_adding || _filterCountryId == null)
+                          ? null
+                          : _add,
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
-        _tableHeader(const ['S.No', 'State', 'Country', 'Actions']),
+        _tableHeader(
+            canUpdate || canDelete
+                ? const ['S.No', 'State', 'Country', 'Actions']
+                : const ['S.No', 'State', 'Country']),
         Expanded(
           child: items.isEmpty
               ? Center(
@@ -508,8 +531,10 @@ class _StatesTabState extends State<_StatesTab> {
                       items[i]['name'] as String,
                       items[i]['country_name'] as String? ?? '',
                     ],
-                    onEdit: () => _edit(items[i]),
-                    onDelete: () => _delete(items[i]['id'] as int),
+                    onEdit: canUpdate ? () => _edit(items[i]) : null,
+                    onDelete: canDelete
+                        ? () => _delete(items[i]['id'] as int)
+                        : null,
                   ),
                 ),
         ),
@@ -603,6 +628,9 @@ class _CitiesTabState extends State<_CitiesTab> {
   Widget build(BuildContext context) {
     final items = _filtered;
     final statesForCountry = _statesForCountry;
+    final canWrite = widget.model.canWrite;
+    final canUpdate = widget.model.canUpdate;
+    final canDelete = widget.model.canDelete;
 
     return Column(
       children: [
@@ -658,31 +686,36 @@ class _CitiesTabState extends State<_CitiesTab> {
                           }),
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      enabled: _filterStateId != null,
-                      decoration: _inputDecoration('Add City'),
-                      style: const TextStyle(fontSize: 13),
-                      onSubmitted: (_) => _add(),
+              if (canWrite) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _ctrl,
+                        enabled: _filterStateId != null,
+                        decoration: _inputDecoration('Add City'),
+                        style: const TextStyle(fontSize: 13),
+                        onSubmitted: (_) => _add(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _addButton(
-                    loading: _adding,
-                    onPressed: (_adding || _filterStateId == null)
-                        ? null
-                        : _add,
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 8),
+                    _addButton(
+                      loading: _adding,
+                      onPressed: (_adding || _filterStateId == null)
+                          ? null
+                          : _add,
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
-        _tableHeader(const ['S.No', 'City', 'Country', 'State', 'Actions']),
+        _tableHeader(
+            canUpdate || canDelete
+                ? const ['S.No', 'City', 'Country', 'State', 'Actions']
+                : const ['S.No', 'City', 'Country', 'State']),
         Expanded(
           child: items.isEmpty
               ? Center(
@@ -704,8 +737,10 @@ class _CitiesTabState extends State<_CitiesTab> {
                       items[i]['country_name'] as String? ?? '',
                       items[i]['state_name'] as String? ?? '',
                     ],
-                    onEdit: () => _edit(items[i]),
-                    onDelete: () => _delete(items[i]['id'] as int),
+                    onEdit: canUpdate ? () => _edit(items[i]) : null,
+                    onDelete: canDelete
+                        ? () => _delete(items[i]['id'] as int)
+                        : null,
                   ),
                 ),
         ),
@@ -746,6 +781,7 @@ class _SingleFieldDialogState extends State<_SingleFieldDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text(widget.title,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -819,6 +855,7 @@ class _StateEditDialogState extends State<_StateEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: const Text('Edit State',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -927,6 +964,7 @@ class _CityEditDialogState extends State<_CityEditDialog> {
     }
 
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: const Text('Edit City',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),

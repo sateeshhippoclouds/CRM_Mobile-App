@@ -74,6 +74,7 @@ class _CompanyProductsViewState extends State<CompanyProductsView> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
         title: const Text('Delete Product',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         content: Text('Are you sure you want to delete "$name"?'),
@@ -529,6 +530,7 @@ class _ColFilterDialogState extends State<_ColFilterDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       title: Text('Filter by ${widget.col.label}',
           style: const TextStyle(
               fontSize: 14,
@@ -848,6 +850,7 @@ class _CustomizeColumnsDialogState extends State<_CustomizeColumnsDialog> {
         toggleable.every((c) => widget.model.colVisible[c.key] ?? true);
 
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       contentPadding: EdgeInsets.zero,
       title: Row(
         children: [
@@ -1042,10 +1045,9 @@ class _AddProductDialogState extends State<_AddProductDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
