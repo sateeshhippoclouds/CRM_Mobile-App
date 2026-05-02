@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:stacked/stacked.dart';
 
@@ -35,6 +37,7 @@ class CompanyClientsViewModel extends BaseViewModel {
   String _query = '';
   String? fetchError;
   bool _loaded = false;
+  String _tab = 'active';
 
   int _currentPage = 0;
   int _rowsPerPage = 25;
@@ -44,33 +47,56 @@ class CompanyClientsViewModel extends BaseViewModel {
   final Set<dynamic> _selectedIds = {};
 
   final Map<String, bool> _colVisible = {
-    'company_name': true,
     'client_name': true,
     'contact_person': true,
     'email': true,
     'phone': true,
     'city': true,
+    'state': true,
+    'country': true,
+    'assigned_to': true,
+    'svc_name': true,
+    'svc_duration': true,
+    'svc_base_price': true,
+    'svc_tax': true,
+    'svc_start_date': true,
+    'svc_end_date': true,
+    'svc_req_duration': true,
     'status': true,
+    'quotation_title': true,
   };
 
   static const List<int> rowsPerPageOptions = [25, 50, 100];
-
-  // These fields are handled client-side (no backend text-filter support)
-  static const _clientSideFilterFields = {'city'};
-
   static const List<ClientColumnDef> allColumns = [
     ClientColumnDef('', 'checkbox', 48, filterable: false, alwaysVisible: true),
     ClientColumnDef('S.No', 'sno', 60, filterable: false, alwaysVisible: true),
-    ClientColumnDef('Company Name', 'company_name', 180),
     ClientColumnDef('Client Name', 'client_name', 160),
-    ClientColumnDef('Contact Person', 'contact_person', 160),
-    ClientColumnDef('Email', 'email', 210),
-    ClientColumnDef('Phone', 'phone', 140),
-    ClientColumnDef('City', 'city', 120),
-    ClientColumnDef('Status', 'status', 110),
-    ClientColumnDef('Action', 'action', 90, filterable: false, alwaysVisible: true),
+    ClientColumnDef('Contact Person', 'contact_person', 150),
+    ClientColumnDef('Email', 'email', 200),
+    ClientColumnDef('Phone', 'phone', 130),
+    ClientColumnDef('City', 'city', 110),
+    ClientColumnDef('State', 'state', 130),
+    ClientColumnDef('Country', 'country', 110),
+    ClientColumnDef('Assigned To', 'assigned_to', 140),
+    ClientColumnDef('Service Name', 'svc_name', 170, filterable: false),
+    ClientColumnDef('Duration', 'svc_duration', 90, filterable: false),
+    ClientColumnDef('Base Price', 'svc_base_price', 110, filterable: false),
+    ClientColumnDef('Tax', 'svc_tax', 90, filterable: false),
+    ClientColumnDef('Start Date', 'svc_start_date', 110, filterable: false),
+    ClientColumnDef('End Date', 'svc_end_date', 110, filterable: false),
+    ClientColumnDef('Req Duration', 'svc_req_duration', 110, filterable: false),
+    ClientColumnDef('Status', 'status', 100),
+    ClientColumnDef('Quotation', 'quotation_title', 140),
+    ClientColumnDef('Action', 'action', 120, filterable: false, alwaysVisible: true),
   ];
 
+  static const tabOptions = [
+    {'label': 'Active', 'value': 'active'},
+    {'label': 'Inactive', 'value': 'inactive'},
+    {'label': 'Draft', 'value': 'draft'},
+  ];
+
+  String get tab => _tab;
   int get currentPage => _currentPage;
   int get rowsPerPage => _rowsPerPage;
   int get total => _total;
@@ -83,6 +109,9 @@ class CompanyClientsViewModel extends BaseViewModel {
   Map<String, bool> get colVisible => Map.unmodifiable(_colVisible);
   bool get hasSelection => _selectedIds.isNotEmpty;
   int get selectedCount => _selectedIds.length;
+  bool get isInactiveTab => _tab == 'inactive';
+  bool get isDraftTab => _tab == 'draft';
+  bool get isNonActiveTab => _tab == 'inactive' || _tab == 'draft';
 
   bool isSelected(dynamic id) => _selectedIds.contains(id);
 
@@ -101,22 +130,55 @@ class CompanyClientsViewModel extends BaseViewModel {
   List<Map<String, dynamic>> get items {
     var list = _items;
     if (_query.isNotEmpty) {
+      final q = _query;
       list = list.where((e) {
-        return (e['company_name'] ?? '').toString().toLowerCase().contains(_query) ||
-            (e['client_name'] ?? '').toString().toLowerCase().contains(_query) ||
-            (e['contact_person'] ?? '').toString().toLowerCase().contains(_query) ||
-            (e['email'] ?? '').toString().toLowerCase().contains(_query);
+        return (e['client_name'] ?? '').toString().toLowerCase().contains(q) ||
+            (e['contact_person'] ?? '').toString().toLowerCase().contains(q) ||
+            (e['email'] ?? '').toString().toLowerCase().contains(q) ||
+            (e['phone'] ?? '').toString().toLowerCase().contains(q);
       }).toList();
     }
-    for (final entry in _colFilters.entries) {
-      if (_clientSideFilterFields.contains(entry.key)) {
-        final q = entry.value.toLowerCase();
-        list = list
-            .where((e) => (e[entry.key] ?? '').toString().toLowerCase().contains(q))
-            .toList();
-      }
-    }
     return list;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+
+  static Map<String, dynamic>? firstService(Map<String, dynamic> item) {
+    try {
+      final raw = item['services'];
+      if (raw == null) return null;
+      final List list =
+          raw is List ? raw : jsonDecode(raw.toString()) as List;
+      if (list.isEmpty) return null;
+      return Map<String, dynamic>.from(list[0] as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String fmtDate(dynamic val) {
+    if (val == null) return '—';
+    final s = val.toString();
+    if (s.isEmpty || s == 'null') return '—';
+    try {
+      final dt = DateTime.parse(s);
+      return '${dt.day.toString().padLeft(2, '0')}/'
+          '${dt.month.toString().padLeft(2, '0')}/'
+          '${dt.year}';
+    } catch (_) {
+      return s.length > 10 ? s.substring(0, 10) : s;
+    }
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────────
+
+  void setTab(String value) {
+    if (_tab == value) return;
+    _tab = value;
+    _currentPage = 0;
+    _loaded = false;
+    _selectedIds.clear();
+    init();
   }
 
   void search(String q) {
@@ -130,7 +192,6 @@ class CompanyClientsViewModel extends BaseViewModel {
     } else {
       _colFilters[field] = value.trim();
     }
-    debugPrint('=== CLIENT FILTER: $field="${value.trim()}" | active: $_colFilters ===');
     _currentPage = 0;
     _loaded = false;
     init();
@@ -174,9 +235,13 @@ class CompanyClientsViewModel extends BaseViewModel {
 
   void toggleSelectAll() {
     if (allCurrentSelected) {
-      for (final e in items) { _selectedIds.remove(e['id']); }
+      for (final e in items) {
+        _selectedIds.remove(e['id']);
+      }
     } else {
-      for (final e in items) { _selectedIds.add(e['id']); }
+      for (final e in items) {
+        _selectedIds.add(e['id']);
+      }
     }
     notifyListeners();
   }
@@ -187,11 +252,17 @@ class CompanyClientsViewModel extends BaseViewModel {
   }
 
   void nextPage() {
-    if (hasNext) { _currentPage++; init(); }
+    if (hasNext) {
+      _currentPage++;
+      init();
+    }
   }
 
   void prevPage() {
-    if (hasPrev) { _currentPage--; init(); }
+    if (hasPrev) {
+      _currentPage--;
+      init();
+    }
   }
 
   Future<void> init() async {
@@ -200,21 +271,21 @@ class CompanyClientsViewModel extends BaseViewModel {
     _user ??= await _api.getStoredUser();
     if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
     try {
-      final backendFilters = Map.fromEntries(
-        _colFilters.entries.where((e) => !_clientSideFilterFields.contains(e.key)),
-      );
       final result = await _api.getClientsPaged(
+        tab: _tab,
         page: _currentPage,
         rowsPerPage: _rowsPerPage,
-        colFilters: backendFilters,
+        colFilters: _colFilters,
+        selfOnly: _isEmployee && _perms.selfOnly,
+        employeeId: _user?.employeeId?.toString(),
       );
       _items = List<Map<String, dynamic>>.from(result['data'] as List);
       _total = result['total'] as int;
+      if (_items.length < _rowsPerPage) {
+        _total = _currentPage * _rowsPerPage + _items.length;
+      }
       _loaded = true;
-      debugPrint('=== CLIENTS DATA ===');
-      debugPrint('Backend total: $_total | After filters: ${items.length}');
-      for (final e in items) { debugPrint(e.toString()); }
-      debugPrint('=== END CLIENTS ===');
+      debugPrint('=== CLIENTS $_tab | total=$_total rows=${_items.length} ===');
     } catch (e) {
       if (!_loaded) fetchError = e.toString().replaceFirst('Exception: ', '');
     } finally {
@@ -234,9 +305,10 @@ class CompanyClientsViewModel extends BaseViewModel {
     }
   }
 
-  Future<String?> updateClient(dynamic id, Map<String, dynamic> data) async {
+  Future<String?> updateClient(dynamic id, Map<String, dynamic> data,
+      {String tab = '1'}) async {
     try {
-      await _api.updateClient(id, data);
+      await _api.updateClient(id, data, tab: tab);
       _loaded = false;
       await init();
       return null;
@@ -247,8 +319,54 @@ class CompanyClientsViewModel extends BaseViewModel {
 
   Future<String?> deleteClient(dynamic id) async {
     try {
-      await _api.deleteClient(id);
+      final tabNum = _tab == 'inactive' ? '2' : _tab == 'draft' ? '3' : '1';
+      await _api.deleteClient(id, tab: tabNum);
       _selectedIds.remove(id);
+      _loaded = false;
+      await init();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> reactivateClient(Map<String, dynamic> item) async {
+    try {
+      final id = item['id'];
+      final svc = firstService(item);
+      final data = {
+        'clientName': item['client_name'] ?? '',
+        'contactPerson': item['contact_person'] ?? '',
+        'email': item['email'] ?? '',
+        'phone': item['phone'] ?? '',
+        'alternateContact': item['alternate_contact'] ?? '',
+        'taxId': item['tax_id'] ?? '',
+        'streetAddress': item['street_address'] ?? '',
+        'city': item['city_id'] ?? item['city'] ?? '',
+        'state': item['state_id'] ?? item['state'] ?? '',
+        'country': item['country_id'] ?? item['country'] ?? '',
+        'postalCode': item['postal_code'] ?? '',
+        'completeAddress': item['complete_address'] ?? '',
+        'assignedTo': item['assigned_to_id'] ?? item['assigned_to'] ?? '',
+        'paymentTerms': item['payment_terms'] ?? '',
+        'preferredPayment': item['preferred_payment'] ?? '',
+        'notes': item['notes'] ?? '',
+        'selectedServices': svc != null ? [svc] : [],
+        'negotiate': item['negotiate'] ?? 'No',
+        'taxOption': item['tax_option'] ?? 'including',
+        'roundOff': item['round_off'] ?? 0,
+        'original_taxableAmount': item['original_taxable_amount'] ?? 0,
+        'original_taxAmount': item['original_tax_amount'] ?? 0,
+        'original_totalAmount': item['original_total_amount'] ?? 0,
+        'revised_taxableAmount': item['revised_taxable_amount'] ?? 0,
+        'revised_taxAmount': item['revised_tax_amount'] ?? 0,
+        'revised_totalAmount': item['revised_total_amount'] ?? 0,
+        'revisedAmounts': item['revisedamounts'] ?? [],
+        'quotationId': item['quotation_id'] ?? '',
+        'quotationTitle': item['quotation_title'] ?? '',
+      };
+      final srcTab = _tab == 'draft' ? '3' : '2';
+      await _api.updateClient(id, data, tab: srcTab);
       _loaded = false;
       await init();
       return null;
@@ -268,8 +386,35 @@ class CompanyClientsViewModel extends BaseViewModel {
     final rows = <List<String>>[headers];
     for (int i = 0; i < exportItems.length; i++) {
       final item = exportItems[i];
+      final svc = firstService(item);
       rows.add(exportCols.map((c) {
         if (c.key == 'sno') return '${i + 1}';
+        if (c.key == 'svc_name') {
+          return svc?['service_name']?.toString() ??
+              svc?['product_name']?.toString() ??
+              svc?['svc_name']?.toString() ??
+              '—';
+        }
+        if (c.key == 'svc_duration') {
+          return svc?['opted_duration']?.toString() ??
+              svc?['duration']?.toString() ??
+              '—';
+        }
+        if (c.key == 'svc_base_price') {
+          return svc?['base_price']?.toString() ?? '—';
+        }
+        if (c.key == 'svc_tax') {
+          return svc?['tax_rate']?.toString() ?? '—';
+        }
+        if (c.key == 'svc_start_date') {
+          return fmtDate(svc?['start_date']);
+        }
+        if (c.key == 'svc_end_date') {
+          return fmtDate(svc?['end_date']);
+        }
+        if (c.key == 'svc_req_duration') {
+          return svc?['original_duration']?.toString() ?? '—';
+        }
         return item[c.key]?.toString() ?? '';
       }).toList());
     }

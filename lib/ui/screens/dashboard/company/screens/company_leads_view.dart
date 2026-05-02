@@ -811,7 +811,7 @@ class _DataRow extends StatelessWidget {
       case 'sno':
         return _Cell(
           width: col.width,
-          child: Text('$rowIndex',
+          child: Text('${item['id'] ?? rowIndex}',
               style: const TextStyle(fontSize: 12, color: Color(0xff6B7280))),
         );
 
@@ -3029,7 +3029,7 @@ class _FollowupDataRow extends StatelessWidget {
     FontWeight fw = FontWeight.normal;
 
     if (key == 'sno') {
-      val = '$rowIndex';
+      val = '${item['id'] ?? rowIndex}';
       color = const Color(0xff6B7280);
     } else if (key == 'lead_name') {
       val = item['lead_name']?.toString() ?? '—';
