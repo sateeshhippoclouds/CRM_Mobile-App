@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:stacked/stacked.dart';
 
 import '../../../../../app/app.locator.dart';
@@ -27,6 +29,24 @@ class _CompanyTasksViewState extends State<CompanyTasksView> {
     _searchCtrl.dispose();
     _hScroll.dispose();
     super.dispose();
+  }
+
+  Future<void> _downloadCsv(CompanyTasksViewModel model) async {
+    try {
+      final csv = model.buildCsvContent();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/tasks.csv');
+      await file.writeAsString(csv);
+      await Share.shareXFiles([XFile(file.path)],
+          text: model.hasSelection
+              ? 'Tasks (${model.selectedCount} selected)'
+              : 'All Tasks');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    }
   }
 
   void _showCustomizeColumns(CompanyTasksViewModel model) {
@@ -106,6 +126,7 @@ class _CompanyTasksViewState extends State<CompanyTasksView> {
                               ? () => _showAddDialog(model)
                               : null,
                           onColumns: () => _showCustomizeColumns(model),
+                          onExportCsv: () => _downloadCsv(model),
                         ),
                         if (model.hasActiveFilters)
                           _ActiveFilterChips(model: model),
@@ -137,11 +158,13 @@ class _Toolbar extends StatelessWidget {
     required this.model,
     this.onAdd,
     required this.onColumns,
+    required this.onExportCsv,
   });
   final TextEditingController searchCtrl;
   final CompanyTasksViewModel model;
   final VoidCallback? onAdd;
   final VoidCallback onColumns;
+  final VoidCallback onExportCsv;
 
   @override
   Widget build(BuildContext context) {
@@ -219,15 +242,7 @@ class _Toolbar extends StatelessWidget {
             _IconBtn(
               icon: Icons.download_outlined,
               tooltip: 'Export CSV',
-              onTap: () {
-                final csv = model.buildCsvContent();
-                Clipboard.setData(ClipboardData(text: csv));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('CSV copied to clipboard'),
-                      duration: Duration(seconds: 2)),
-                );
-              },
+              onTap: onExportCsv,
             ),
             const SizedBox(width: 4),
             _IconBtn(

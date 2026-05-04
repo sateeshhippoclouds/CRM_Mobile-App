@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:stacked/stacked.dart';
 
 import '../../../../../app/app.locator.dart';
@@ -91,6 +93,24 @@ class _LeadsTab extends StatelessWidget {
   final CompanyLeadsViewModel model;
   final TextEditingController searchCtrl;
 
+  Future<void> _downloadCsv(BuildContext ctx) async {
+    try {
+      final csv = model.buildCsvContent();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/leads.csv');
+      await file.writeAsString(csv);
+      await Share.shareXFiles([XFile(file.path)],
+          text: model.hasSelection
+              ? 'Leads (${model.selectedCount} selected)'
+              : 'All Leads');
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx)
+            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    }
+  }
+
   void _showAddDialog(BuildContext ctx) {
     showDialog(
       context: ctx,
@@ -177,6 +197,7 @@ class _LeadsTab extends StatelessWidget {
           searchCtrl: searchCtrl,
           onAdd: model.canWrite ? () => _showAddDialog(context) : null,
           onColumns: () => _showColumnsDialog(context),
+          onExportCsv: () => _downloadCsv(context),
         ),
         if (model.hasSelection) _SelectionBar(model: model),
         if (model.hasActiveFilters) _FilterChipsBar(model: model),
@@ -218,11 +239,13 @@ class _Toolbar extends StatelessWidget {
     required this.searchCtrl,
     this.onAdd,
     required this.onColumns,
+    required this.onExportCsv,
   });
   final CompanyLeadsViewModel model;
   final TextEditingController searchCtrl;
   final VoidCallback? onAdd;
   final VoidCallback onColumns;
+  final VoidCallback onExportCsv;
 
   @override
   Widget build(BuildContext context) {
@@ -302,15 +325,7 @@ class _Toolbar extends StatelessWidget {
             _IconBtn(
               icon: Icons.download_outlined,
               tooltip: 'Export CSV',
-              onTap: () {
-                final csv = model.buildCsvContent();
-                Clipboard.setData(ClipboardData(text: csv));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('CSV copied to clipboard'),
-                      duration: Duration(seconds: 2)),
-                );
-              },
+              onTap: onExportCsv,
             ),
             const SizedBox(width: 4),
             _IconBtn(
@@ -2365,6 +2380,24 @@ class _FollowupsTabState extends State<_FollowupsTab> {
     super.dispose();
   }
 
+  Future<void> _downloadFollowupsCsv() async {
+    try {
+      final csv = widget.model.buildFollowupCsvContent();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/followups.csv');
+      await file.writeAsString(csv);
+      await Share.shareXFiles([XFile(file.path)],
+          text: widget.model.followupHasSelection
+              ? 'Follow-ups (${widget.model.followupSelectedCount} selected)'
+              : 'All Follow-ups');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    }
+  }
+
   void _showFollowupForm({Map<String, dynamic>? existing}) {
     final model = widget.model;
     showDialog(
@@ -2515,15 +2548,7 @@ class _FollowupsTabState extends State<_FollowupsTab> {
                 _IconBtn(
                   icon: Icons.download_outlined,
                   tooltip: 'Export CSV',
-                  onTap: () {
-                    final csv = model.buildFollowupCsvContent();
-                    Clipboard.setData(ClipboardData(text: csv));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('CSV copied to clipboard'),
-                          duration: Duration(seconds: 2)),
-                    );
-                  },
+                  onTap: _downloadFollowupsCsv,
                 ),
                 const SizedBox(width: 4),
                 _IconBtn(

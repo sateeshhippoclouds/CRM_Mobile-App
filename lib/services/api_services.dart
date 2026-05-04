@@ -1255,22 +1255,119 @@ class HippoAuthService {
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
   }
 
-  // ── Sales & Billing (/sales) ──────────────────────────────────────────────────
+  // ── Sales & Billing (/sale) ───────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> getSalesBilling() async {
+  Future<Map<String, dynamic>> getSalesPaged({
+    int page = 0,
+    int rowsPerPage = 25,
+    Map<String, String> colFilters = const {},
+  }) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final queryParams = <String, String>{
+      'companyId': companyId.toString(),
+      'currentPage': page.toString(),
+      'rowsPerPage': rowsPerPage.toString(),
+    };
+    if (colFilters.isNotEmpty) {
+      queryParams['filters'] = jsonEncode(
+        colFilters.entries.map((e) => {'field': e.key, 'value': e.value}).toList(),
+      );
+    }
+    final res = await authenticatedRequest('/sale', queryParams: queryParams);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = decoded['data'] as List? ?? [];
+    final t = decoded['totalrows'] ?? decoded['total'] ?? data.length;
+    return {
+      'data': data.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      'total': t is int ? t : int.tryParse(t.toString()) ?? data.length,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getSalesHistory() async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     final res = await authenticatedRequest(
-      '/sales',
-      queryParams: {'companyid': companyId.toString()},
+      '/sale/history',
+      queryParams: {'companyId': companyId.toString()},
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
-    final decoded = jsonDecode(res.body);
-    if (decoded is Map<String, dynamic>) return decoded;
-    if (decoded is List) {
-      return {'sales': decoded, 'drafts': [], 'history': []};
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = decoded['history'] as List? ?? [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> getClientDetailForSale(dynamic clientId) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final res = await authenticatedRequest(
+      '/sale/client-detail',
+      queryParams: {
+        'clientId': clientId.toString(),
+        'companyId': companyId.toString(),
+      },
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<int> addSale(Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    final res = await authenticatedRequest('/sale', method: 'POST', body: data);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
     }
-    return {'sales': [], 'drafts': [], 'history': []};
+    final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+    return (decoded['saleId'] as int?) ?? 0;
+  }
+
+  Future<void> updateSale(dynamic id, Map<String, dynamic> data) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    data['companyid'] = companyId;
+    final res = await authenticatedRequest(
+      '/sale',
+      method: 'PUT',
+      queryParams: {'id': id.toString()},
+      body: data,
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> deleteSale(dynamic id) async {
+    final res = await authenticatedRequest(
+      '/sale',
+      method: 'DELETE',
+      queryParams: {'id': id.toString()},
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> recordSalePayment(Map<String, dynamic> data) async {
+    final res =
+        await authenticatedRequest('/sale/payment', method: 'POST', body: data);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAllClientsForSale() async {
+    final results = await Future.wait([
+      getClientsPaged(tab: 'active', rowsPerPage: 500),
+      getClientsPaged(tab: 'inactive', rowsPerPage: 500),
+    ]);
+    return [
+      ...List<Map<String, dynamic>>.from(results[0]['data'] as List),
+      ...List<Map<String, dynamic>>.from(results[1]['data'] as List),
+    ];
+  }
+
+  Future<List<Map<String, dynamic>>> getAllEmployeesForSale() async {
+    final result = await getEmployeesPaged(rowsPerPage: 500);
+    return List<Map<String, dynamic>>.from(result['data'] as List);
   }
 
   // ── Location Masters (/locationsmaster) ─────────────────────────────────────
