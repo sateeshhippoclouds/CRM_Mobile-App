@@ -31,10 +31,7 @@ class HippoAuthService {
       'eyJuYW1lIjoiaGVtYW50aCIsImVtYWlsIjoic2FpcGFybGE0M0BnbWFpbC5jb20iLCJyb2xlIjoiY2VvIiwiY29tcGFueWlkIjoxLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwidXNlcl90eXBlIjoiY29tcGFueSIsImlhdCI6MTc3NjQxODc3NywiZXhwIjoxODA3OTU0Nzc3fQ.'
       'n3VOmrhMGQbsrjH_7xabhklrp7z_cUQ6WeZyLNvJ6qY';
 
-  static const String _employeeStaticToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
-      'eyJuYW1lIjoiUHJpeWEgVmVybWEiLCJlbWFpbCI6InByaXlhLnZlcm1hQGNvbXBhbnkuY29tIiwicm9sZSI6IkFkbWluIiwiY29tcGFueWlkIjoxLCJpZCI6MiwiZW1wbG95ZWVpZCI6MiwiYWN0aXZpdHlzdGF0dXMiOnRydWUsInVzZXJfdHlwZSI6ImVtcGxveWVlIiwiaWF0IjoxNzc2NDE3MTUyLCJleHAiOjE4MDc5NTMxNTJ9.'
-      'tgKOyUVbSppWad3aXFFmXjICMj1BUY7azbIGXm9M_0Q';
+  static const String _employeeStaticToken = '\\';
 
   static String _staticTokenFor(String message) {
     if (message.contains('CEO')) return _ceoStaticToken;
@@ -1271,7 +1268,9 @@ class HippoAuthService {
     };
     if (colFilters.isNotEmpty) {
       queryParams['filters'] = jsonEncode(
-        colFilters.entries.map((e) => {'field': e.key, 'value': e.value}).toList(),
+        colFilters.entries
+            .map((e) => {'field': e.key, 'value': e.value})
+            .toList(),
       );
     }
     final res = await authenticatedRequest('/sale', queryParams: queryParams);
@@ -1511,6 +1510,140 @@ class HippoAuthService {
       queryParams: {'id': id.toString()},
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  // ── Company Settings ────────────────────────────────────────────────────────
+
+  static const String _logoUrlKey = 'hippo_company_logo_url';
+
+  Future<void> cacheCompanyLogoUrl(String? url) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (url == null) {
+      await prefs.remove(_logoUrlKey);
+    } else {
+      await prefs.setString(_logoUrlKey, url);
+    }
+  }
+
+  Future<String?> getCachedCompanyLogoUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_logoUrlKey);
+  }
+
+  Future<List<Map<String, dynamic>>> getCompanySettings(
+      String settingType) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final res = await authenticatedRequest(
+      '/setting',
+      queryParams: {
+        'companyId': companyId.toString(),
+        'settingType': settingType,
+      },
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(body['data'] as List? ?? []);
+  }
+
+  Future<void> saveCompanyBank(Map<String, dynamic> data) async {
+    final res = await authenticatedRequest(
+      '/setting',
+      method: 'POST',
+      body: {'action': 'saveBank', ...data},
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadCompanySettingsFile(
+      String field, File file, String companyId) async {
+    _activeRequests.value++;
+    try {
+      final token = await getToken();
+      if (token == null)
+        throw Exception('Session expired. Please login again.');
+      final uri = Uri.parse('$_baseUrl/setting?companyId=$companyId');
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Bearer $token'
+        ..files.add(await http.MultipartFile.fromPath(field, file.path));
+      final streamed = await request.send().timeout(_timeout);
+      final response = await http.Response.fromStream(streamed);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(_parseMessage(response.body));
+      }
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } finally {
+      _activeRequests.value--;
+    }
+  }
+
+  // ── Company Dashboard ────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getCompanyDashboardStats(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res = await authenticatedRequest('/dashboards', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCompanyDashboardSales(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res =
+        await authenticatedRequest('/dashboards/sales', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCompanyDashboardTasks(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res =
+        await authenticatedRequest('/dashboards/tasks', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCompanyDashboardEmployees(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res =
+        await authenticatedRequest('/dashboards/employees', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCompanyDashboardFollowups(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res =
+        await authenticatedRequest('/dashboards/followups', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCompanyDashboardLeads(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res =
+        await authenticatedRequest('/dashboards/leads', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Map<String, dynamic> _decodeJwtPayload(String token) {
