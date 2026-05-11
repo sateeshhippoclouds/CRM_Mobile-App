@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:stacked/stacked.dart';
 
+import '../../calls/call_test_view.dart';
 import 'company_dashboard_viewmodel.dart';
 import 'screens/company_clients_view.dart';
 import 'screens/company_employees_view.dart';
@@ -73,6 +74,14 @@ class CompanyDashboardView extends StatelessWidget {
               ]),
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.call_rounded, color: _text1, size: 22),
+                tooltip: 'Calls',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CallTestView()),
+                ),
+              ),
               if (!model.isEmployee)
                 IconButton(
                   icon: const Icon(Icons.settings_rounded,

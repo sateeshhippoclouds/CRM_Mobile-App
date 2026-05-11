@@ -15,6 +15,12 @@ allprojects {
         google()
         mavenCentral()
     }
+    // Fix for Flutter packages that omit `namespace` (required by AGP 8+)
+    afterEvaluate {
+        if (plugins.hasPlugin('com.android.library') && !android.namespace) {
+            android.namespace = group
+        }
+    }
 }
 
 rootProject.layout.buildDirectory.set(file('../build'))

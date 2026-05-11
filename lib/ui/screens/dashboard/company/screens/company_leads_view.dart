@@ -8,6 +8,7 @@ import 'package:stacked/stacked.dart';
 
 import '../../../../../app/app.locator.dart';
 import '../../../../../services/api_services.dart';
+import '../../../../widgets/call_button.dart';
 import 'company_leads_viewmodel.dart';
 import 'crm_widgets.dart';
 
@@ -848,6 +849,10 @@ class _DataRow extends StatelessWidget {
         );
 
       case 'action':
+        final phone = item['phone']?.toString() ?? '';
+        final leadName = item['lead_name']?.toString() ??
+            item['name']?.toString() ?? '';
+        final leadId = item['id']?.toString() ?? '';
         return Container(
           width: col.width,
           height: _rowH,
@@ -855,6 +860,16 @@ class _DataRow extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              if (phone.isNotEmpty) ...[
+                CallButton(
+                  phoneNumber: phone,
+                  contactName: leadName,
+                  contactId: leadId,
+                  contactType: 'lead',
+                  size: 30,
+                ),
+                const SizedBox(width: 4),
+              ],
               if (canUpdate)
                 _ActionBtn(
                     icon: Icons.edit_outlined, color: kCrmBlue, onTap: onEdit),

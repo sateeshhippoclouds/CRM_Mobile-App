@@ -31,7 +31,8 @@ class HippoAuthService {
       'eyJuYW1lIjoiaGVtYW50aCIsImVtYWlsIjoic2FpcGFybGE0M0BnbWFpbC5jb20iLCJyb2xlIjoiY2VvIiwiY29tcGFueWlkIjoxLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwidXNlcl90eXBlIjoiY29tcGFueSIsImlhdCI6MTc3NjQxODc3NywiZXhwIjoxODA3OTU0Nzc3fQ.'
       'n3VOmrhMGQbsrjH_7xabhklrp7z_cUQ6WeZyLNvJ6qY';
 
-  static const String _employeeStaticToken = '\\';
+  static const String _employeeStaticToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiUHJpeWEgVmVybWEiLCJlbWFpbCI6InByaXlhLnZlcm1hQGNvbXBhbnkuY29tIiwicm9sZSI6IkFkbWluIiwiY29tcGFueWlkIjoxLCJpZCI6MiwiZW1wbG95ZWVpZCI6MiwiYWN0aXZpdHlzdGF0dXMiOnRydWUsInVzZXJfdHlwZSI6ImVtcGxveWVlIiwiaWF0IjoxNzc4MjIwMjQxLCJleHAiOjE4MDk3NTYyNDF9.tuUg_KpIQttn7XUgr4LOPrez79kF546eZg2JQELwbj0';
 
   static String _staticTokenFor(String message) {
     if (message.contains('CEO')) return _ceoStaticToken;
@@ -1644,6 +1645,41 @@ class HippoAuthService {
         await authenticatedRequest('/dashboards/leads', queryParams: qp);
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<void> postCallRecord(Map<String, dynamic> data) async {
+    final res = await authenticatedRequest(
+      '/calls',
+      method: 'POST',
+      body: data,
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getCallHistory(
+      Map<String, String> params) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final qp = {'companyid': companyId.toString(), ...params};
+    final res = await authenticatedRequest('/calls', queryParams: qp);
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+    final body = jsonDecode(res.body);
+    if (body is List) {
+      return body
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    final list = body['calls'] ?? body['data'] ?? body['records'] ?? [];
+    if (list is List) {
+      return list
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return [];
   }
 
   Map<String, dynamic> _decodeJwtPayload(String token) {
