@@ -1,10 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:stacked/stacked.dart';
+import 'package:xml/xml.dart';
 
 import '../../../../../app/app.locator.dart';
 import '../../../../../services/api_services.dart';
@@ -147,6 +151,72 @@ class _LeadsTab extends StatelessWidget {
     );
   }
 
+  void _showChangeAssignmentDialog(BuildContext ctx) {
+    if (!model.hasSelection) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Select at least one lead first')),
+      );
+      return;
+    }
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => _ChangeAssignmentDialog(
+        count: model.selectedCount,
+        onAssign: (empId) => model.bulkAssignLeads(empId),
+      ),
+    );
+  }
+
+  void _showBulkImportDialog(BuildContext ctx) {
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => _BulkImportDialog(
+        onImport: (leads) => model.bulkImportLeads(leads),
+      ),
+    );
+  }
+
+  Future<void> _confirmBulkDelete(BuildContext ctx) async {
+    if (!model.hasSelection) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Select at least one lead first')),
+      );
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(vertical: 24),
+        title: const Text('Delete Selected Leads',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        content: Text(
+            'Delete ${model.selectedCount} selected lead(s)? This cannot be undone.',
+            style: const TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('CANCEL',
+                  style: TextStyle(color: Color(0xff6B7280)))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xffDC2626),
+                foregroundColor: Colors.white),
+            child: const Text('DELETE'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && ctx.mounted) {
+      final err = await model.bulkDeleteLeads();
+      if (err != null && ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(err)));
+      }
+    }
+  }
+
   Future<void> _confirmDelete(
       BuildContext ctx, Map<String, dynamic> item) async {
     final name = item['lead_name']?.toString() ?? 'this lead';
@@ -199,6 +269,9 @@ class _LeadsTab extends StatelessWidget {
           onAdd: model.canWrite ? () => _showAddDialog(context) : null,
           onColumns: () => _showColumnsDialog(context),
           onExportCsv: () => _downloadCsv(context),
+          onBulkImport: () => _showBulkImportDialog(context),
+          onChangeAssignment: () => _showChangeAssignmentDialog(context),
+          onBulkDelete: () => _confirmBulkDelete(context),
         ),
         if (model.hasSelection) _SelectionBar(model: model),
         if (model.hasActiveFilters) _FilterChipsBar(model: model),
@@ -241,12 +314,18 @@ class _Toolbar extends StatelessWidget {
     this.onAdd,
     required this.onColumns,
     required this.onExportCsv,
+    required this.onBulkImport,
+    required this.onChangeAssignment,
+    required this.onBulkDelete,
   });
   final CompanyLeadsViewModel model;
   final TextEditingController searchCtrl;
   final VoidCallback? onAdd;
   final VoidCallback onColumns;
   final VoidCallback onExportCsv;
+  final VoidCallback onBulkImport;
+  final VoidCallback onChangeAssignment;
+  final VoidCallback onBulkDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -330,10 +409,31 @@ class _Toolbar extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             _IconBtn(
+              icon: Icons.cloud_upload_outlined,
+              tooltip: 'Bulk Import',
+              onTap: onBulkImport,
+            ),
+            const SizedBox(width: 4),
+            _IconBtn(
               icon: Icons.view_column_outlined,
               tooltip: 'Customize Columns',
               onTap: onColumns,
             ),
+            if (model.hasSelection) ...[
+              const SizedBox(width: 4),
+              _IconBtn(
+                icon: Icons.person_pin_outlined,
+                tooltip: 'Change Assignment',
+                onTap: onChangeAssignment,
+              ),
+              const SizedBox(width: 4),
+              _IconBtn(
+                icon: Icons.delete_outline,
+                tooltip: 'Delete Selected',
+                color: const Color(0xffDC2626),
+                onTap: onBulkDelete,
+              ),
+            ],
           ],
         ),
       ),
@@ -342,11 +442,16 @@ class _Toolbar extends StatelessWidget {
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn(
-      {required this.icon, required this.tooltip, required this.onTap});
+  const _IconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color,
+  });
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -361,7 +466,7 @@ class _IconBtn extends StatelessWidget {
             border: Border.all(color: const Color(0xffE5E7EB)),
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Icon(icon, size: 18, color: const Color(0xff374151)),
+          child: Icon(icon, size: 18, color: color ?? const Color(0xff374151)),
         ),
       ),
     );
@@ -827,7 +932,7 @@ class _DataRow extends StatelessWidget {
       case 'sno':
         return _Cell(
           width: col.width,
-          child: Text('${item['id'] ?? rowIndex}',
+          child: Text('$rowIndex',
               style: const TextStyle(fontSize: 12, color: Color(0xff6B7280))),
         );
 
@@ -850,8 +955,8 @@ class _DataRow extends StatelessWidget {
 
       case 'action':
         final phone = item['phone']?.toString() ?? '';
-        final leadName = item['lead_name']?.toString() ??
-            item['name']?.toString() ?? '';
+        final leadName =
+            item['lead_name']?.toString() ?? item['name']?.toString() ?? '';
         final leadId = item['id']?.toString() ?? '';
         return Container(
           width: col.width,
@@ -2364,6 +2469,681 @@ class _DropdownField extends StatelessWidget {
   }
 }
 
+// ─── Change Assignment Dialog ─────────────────────────────────────────────────
+
+class _ChangeAssignmentDialog extends StatefulWidget {
+  const _ChangeAssignmentDialog({required this.count, required this.onAssign});
+  final int count;
+  final Future<String?> Function(String employeeId) onAssign;
+
+  @override
+  State<_ChangeAssignmentDialog> createState() =>
+      _ChangeAssignmentDialogState();
+}
+
+class _ChangeAssignmentDialogState extends State<_ChangeAssignmentDialog> {
+  final _api = locator<HippoAuthService>();
+  List<Map<String, String>> _employees = [];
+  String? _selectedEmpId;
+  bool _loading = true;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEmployees();
+  }
+
+  Future<void> _loadEmployees() async {
+    try {
+      final result =
+          await _api.getEmployeesPaged(tab: 'active', rowsPerPage: 500);
+      final list = (result['data'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [];
+      if (!mounted) return;
+      setState(() {
+        _employees = list
+            .map<Map<String, String>>((e) => {
+                  'id': e['id']?.toString() ?? '',
+                  'label': e['employee_name']?.toString() ?? '',
+                })
+            .where((e) => e['id']!.isNotEmpty)
+            .toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_selectedEmpId == null) {
+      setState(() => _error = 'Please select an employee');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final err = await widget.onAssign(_selectedEmpId!);
+    if (!mounted) return;
+    if (err != null) {
+      setState(() {
+        _submitting = false;
+        _error = err;
+      });
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Text('Change Assignment (${widget.count} leads)',
+          style: const TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w700, color: kCrmBlue)),
+      content: SizedBox(
+        width: 340,
+        child: _loading
+            ? const Center(
+                child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(color: kCrmBlue),
+              ))
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        _employees.any((e) => e['id'] == _selectedEmpId)
+                            ? _selectedEmpId
+                            : null,
+                    decoration: InputDecoration(
+                      hintText: 'Assigned To',
+                      hintStyle: const TextStyle(
+                          fontSize: 13, color: Color(0xff9CA3AF)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide:
+                              const BorderSide(color: Color(0xffD1D5DB))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: kCrmBlue)),
+                      isDense: true,
+                    ),
+                    style:
+                        const TextStyle(fontSize: 13, color: Color(0xff374151)),
+                    items: _employees
+                        .map((e) => DropdownMenuItem(
+                              value: e['id'],
+                              child: Text(e['label'] ?? '',
+                                  overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedEmpId = v),
+                    isExpanded: true,
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_error!,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xffDC2626))),
+                  ],
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.pop(context),
+          child:
+              const Text('CANCEL', style: TextStyle(color: Color(0xff6B7280))),
+        ),
+        ElevatedButton(
+          onPressed: (_submitting || _loading) ? null : _submit,
+          style: ElevatedButton.styleFrom(
+              backgroundColor: kCrmBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8))),
+          child: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Text('UPDATE'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Bulk Import Dialog ───────────────────────────────────────────────────────
+
+class _BulkImportDialog extends StatefulWidget {
+  const _BulkImportDialog({required this.onImport});
+  final Future<String?> Function(List<Map<String, dynamic>>) onImport;
+
+  @override
+  State<_BulkImportDialog> createState() => _BulkImportDialogState();
+}
+
+class _BulkImportDialogState extends State<_BulkImportDialog> {
+  List<Map<String, dynamic>>? _parsed;
+  String? _parseError;
+  bool _submitting = false;
+  String? _submitError;
+
+  static const _requiredCols = ['lead_name', 'phone'];
+  static const _allCols = [
+    'lead_name',
+    'full_name',
+    'email',
+    'phone',
+    'alternate_number',
+    'address',
+    'city',
+    'state',
+    'zip_code',
+    'country',
+    'source_type',
+    'source_channel',
+    'interest_level',
+    'lead_stage',
+    'category',
+    'assigned_to',
+    'assigned_on',
+    'notes',
+  ];
+
+  // Converts "leadName" → "lead_name", "Lead Name" → "lead_name"
+  static String _normalizeHeader(String h) {
+    h = h.trim().replaceAll('"', '');
+    // camelCase → snake_case: insert _ before each uppercase letter
+    h = h.replaceAllMapped(
+      RegExp(r'([A-Z])'),
+      (m) => '_${m.group(0)!.toLowerCase()}',
+    );
+    h = h.replaceAll(' ', '_').toLowerCase();
+    if (h.startsWith('_')) h = h.substring(1);
+    return h;
+  }
+
+  // Splits a CSV line respecting quoted fields that may contain commas.
+  static List<String> _splitCsvLine(String line) {
+    final fields = <String>[];
+    final buf = StringBuffer();
+    bool inQuotes = false;
+    for (int i = 0; i < line.length; i++) {
+      final ch = line[i];
+      if (ch == '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          buf.write('"');
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch == ',' && !inQuotes) {
+        fields.add(buf.toString().trim());
+        buf.clear();
+      } else {
+        buf.write(ch);
+      }
+    }
+    fields.add(buf.toString().trim());
+    return fields;
+  }
+
+  void _parseCsv(String raw) {
+    try {
+      // Strip UTF-8 BOM and normalise line endings.
+      raw = raw.replaceFirst('﻿', '');
+      raw = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+      final lines = raw
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+      if (lines.length < 2) {
+        setState(
+            () => _parseError = 'CSV must have a header row and data rows');
+        return;
+      }
+      final headers = _splitCsvLine(lines.first).map(_normalizeHeader).toList();
+      for (final req in _requiredCols) {
+        if (!headers.contains(req)) {
+          setState(() => _parseError = 'Missing required column: $req');
+          return;
+        }
+      }
+      final rows = <Map<String, dynamic>>[];
+      for (final line in lines.skip(1)) {
+        final vals = _splitCsvLine(line);
+        final row = <String, dynamic>{};
+        for (int i = 0; i < headers.length; i++) {
+          if (_allCols.contains(headers[i])) {
+            row[headers[i]] = i < vals.length ? vals[i] : '';
+          }
+        }
+        if ((row['lead_name'] ?? '').toString().trim().isNotEmpty &&
+            (row['phone'] ?? '').toString().trim().isNotEmpty) {
+          rows.add(row);
+        }
+      }
+      if (rows.isEmpty) {
+        setState(() => _parseError =
+            'No valid rows found — ensure lead_name and phone columns have data');
+        return;
+      }
+      setState(() {
+        _parsed = rows;
+        _parseError = null;
+      });
+    } catch (e) {
+      setState(() => _parseError = 'Parse error: $e');
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_parsed == null) return;
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
+    final msg = await widget.onImport(_parsed!);
+    if (!mounted) return;
+    // Close dialog for both full success and partial success.
+    // Only keep dialog open on a true error (no leads inserted at all).
+    final isPartialSuccess =
+        msg != null && msg.contains('Imported') && msg.contains('failed');
+    if (msg == null || isPartialSuccess) {
+      Navigator.pop(context);
+      if (isPartialSuccess && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xffD97706),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } else {
+      setState(() {
+        _submitting = false;
+        _submitError = msg;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xffE5E7EB)))),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Bulk Import Leads',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: kCrmBlue)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close,
+                        size: 20, color: Color(0xff6B7280)),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xffEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xffBFDBFE)),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('CSV Format Instructions',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: kCrmBlue)),
+                          SizedBox(height: 6),
+                          Text(
+                            'Required columns: lead_name, phone\n'
+                            'Optional: full_name, email, alternate_number, address,\n'
+                            '  city, state, country, source_type, interest_level,\n'
+                            '  lead_stage, category, assigned_to, notes',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xff374151)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _pickFile,
+                        icon: const Icon(Icons.upload_file_outlined, size: 18),
+                        label: Text(_parsed != null
+                            ? '${_parsed!.length} rows loaded — tap to change'
+                            : 'Choose File (.csv / .xlsx)'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kCrmBlue,
+                          side: const BorderSide(color: kCrmBlue),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                    if (_parseError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_parseError!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xffDC2626))),
+                    ],
+                    if (_parsed != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffF0FDF4),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xff86EFAC)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline,
+                                size: 16, color: Color(0xff16A34A)),
+                            const SizedBox(width: 8),
+                            Text('${_parsed!.length} lead(s) ready to import',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xff16A34A),
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_submitError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_submitError!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xffDC2626))),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xffE5E7EB)))),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed:
+                        _submitting ? null : () => Navigator.pop(context),
+                    child: const Text('CANCEL',
+                        style: TextStyle(color: Color(0xff6B7280))),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed:
+                        (_parsed == null || _submitting) ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: kCrmBlue,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8))),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('IMPORT'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv', 'xlsx', 'xls'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) setState(() => _parseError = 'Could not read file bytes');
+        return;
+      }
+      final ext = (file.extension ?? '').toLowerCase();
+      if (ext == 'csv') {
+        _parseCsv(String.fromCharCodes(bytes));
+      } else if (ext == 'xlsx' || ext == 'xls') {
+        _parseXlsx(bytes);
+      } else {
+        if (mounted) {
+          setState(
+              () => _parseError = 'Unsupported file type. Use .csv or .xlsx');
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _parseError = 'Error picking file: $e');
+    }
+  }
+
+  // Returns the decompressed content of an ArchiveFile as bytes.
+  static Uint8List _readArchiveBytes(ArchiveFile f) => f.content;
+
+  void _parseXlsx(Uint8List bytes) {
+    try {
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      // 1. Build shared-strings table (text cells reference this by index).
+      final sharedStrings = <String>[];
+      final ssFile = archive.findFile('xl/sharedStrings.xml');
+      if (ssFile != null) {
+        final ssBytes = _readArchiveBytes(ssFile);
+        if (ssBytes.isNotEmpty) {
+          final doc = XmlDocument.parse(utf8.decode(ssBytes));
+          for (final si in doc.findAllElements('si')) {
+            // Rich-text spans use multiple <t> children; plain text has one.
+            final text = si.findAllElements('t').map((t) => t.innerText).join();
+            sharedStrings.add(text);
+          }
+        }
+      }
+
+      // 2. Locate first worksheet — try common path variants.
+      ArchiveFile? sheetFile;
+      for (final path in [
+        'xl/worksheets/sheet1.xml',
+        'xl/worksheets/Sheet1.xml',
+        'xl/worksheets/sheet.xml',
+      ]) {
+        sheetFile = archive.findFile(path);
+        if (sheetFile != null) break;
+      }
+      // Fallback: grab any file under xl/worksheets/
+      if (sheetFile == null) {
+        for (final f in archive.files) {
+          if (f.name.startsWith('xl/worksheets/') && f.name.endsWith('.xml')) {
+            sheetFile = f;
+            break;
+          }
+        }
+      }
+      if (sheetFile == null) {
+        if (mounted)
+          setState(() => _parseError = 'No worksheet found in Excel file');
+        return;
+      }
+
+      final sheetBytes = _readArchiveBytes(sheetFile);
+      if (sheetBytes.isEmpty) {
+        if (mounted) setState(() => _parseError = 'Worksheet file is empty');
+        return;
+      }
+      final sheetDoc = XmlDocument.parse(utf8.decode(sheetBytes));
+
+      // 3. Build rows as List<List<String>>.
+      final rows = <List<String>>[];
+      for (final rowEl in sheetDoc.findAllElements('row')) {
+        final cells = <String>[];
+        for (final cell in rowEl.findAllElements('c')) {
+          // Sparse columns: fill gaps so column indices stay aligned.
+          final ref = cell.getAttribute('r') ?? '';
+          final colIdx = _xlColIndex(ref);
+          while (cells.length < colIdx) {
+            cells.add('');
+          }
+
+          final type = cell.getAttribute('t') ?? '';
+          final vEls = cell.findElements('v');
+          final vEl = vEls.isEmpty ? null : vEls.first;
+          String value = '';
+          if (type == 's') {
+            // Shared string — <v> holds the index.
+            final idx = int.tryParse(vEl?.innerText.trim() ?? '') ?? -1;
+            value = (idx >= 0 && idx < sharedStrings.length)
+                ? sharedStrings[idx]
+                : '';
+          } else if (type == 'inlineStr') {
+            // Inline string — text is inside <is><t>…</t></is>.
+            value = cell.findAllElements('t').map((t) => t.innerText).join();
+          } else if (type == 'str') {
+            // Formula result stored as a computed string in <v>.
+            value = vEl?.innerText ?? '';
+          } else {
+            // Number, date, boolean, or empty — <v> has the raw value.
+            value = vEl?.innerText ?? '';
+          }
+          cells.add(value.trim());
+        }
+        if (cells.isNotEmpty) rows.add(cells);
+      }
+
+      if (rows.length < 2) {
+        if (mounted) {
+          setState(() => _parseError =
+              'Excel sheet must have a header row and at least one data row '
+                  '(found ${rows.length} row(s))');
+        }
+        return;
+      }
+
+      // 4. Normalize headers and validate required columns.
+      final headers = rows.first.map(_normalizeHeader).toList();
+
+      for (final req in _requiredCols) {
+        if (!headers.contains(req)) {
+          if (mounted) {
+            setState(() => _parseError = 'Missing required column: $req '
+                '(found columns: ${headers.join(', ')})');
+          }
+          return;
+        }
+      }
+
+      // 5. Map data rows to lead field maps.
+      final result = <Map<String, dynamic>>[];
+      for (final row in rows.skip(1)) {
+        final map = <String, dynamic>{};
+        for (int i = 0; i < headers.length; i++) {
+          if (_allCols.contains(headers[i])) {
+            map[headers[i]] = (i < row.length ? row[i] : '').trim();
+          }
+        }
+        final name = (map['lead_name'] ?? '').toString().trim();
+        final phone = (map['phone'] ?? '').toString().trim();
+        if (name.isNotEmpty && phone.isNotEmpty) {
+          result.add(map);
+        }
+      }
+
+      if (result.isEmpty) {
+        final sample =
+            rows.length > 1 ? rows[1].take(4).join(' | ') : '(no rows)';
+        if (mounted) {
+          setState(() => _parseError =
+              'No valid rows found — lead_name and phone must both have values. '
+                  'First data row sample: $sample');
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _parsed = result;
+          _parseError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _parseError = 'Excel parse error: $e');
+    }
+  }
+
+  // Converts cell reference like "B3" → 0-based column index (B → 1).
+  static int _xlColIndex(String ref) {
+    final letters = ref.replaceAll(RegExp(r'[0-9]'), '').toUpperCase();
+    int idx = 0;
+    for (final ch in letters.codeUnits) {
+      idx = idx * 26 + (ch - 64);
+    }
+    return idx - 1;
+  }
+}
+
 // ─── Follow-ups Tab ───────────────────────────────────────────────────────────
 
 class _FollowupsTab extends StatefulWidget {
@@ -3069,7 +3849,7 @@ class _FollowupDataRow extends StatelessWidget {
     FontWeight fw = FontWeight.normal;
 
     if (key == 'sno') {
-      val = '${item['id'] ?? rowIndex}';
+      val = '$rowIndex';
       color = const Color(0xff6B7280);
     } else if (key == 'lead_name') {
       val = item['lead_name']?.toString() ?? '—';

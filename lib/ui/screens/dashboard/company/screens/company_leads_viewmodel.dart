@@ -117,8 +117,10 @@ class CompanyLeadsViewModel extends BaseViewModel {
   static const List<int> rowsPerPageOptions = [25, 50, 100];
 
   static const List<FollowupColumnDef> allFollowupColumns = [
-    FollowupColumnDef('', 'checkbox', 48, filterable: false, alwaysVisible: true),
-    FollowupColumnDef('S.No', 'sno', 60, filterable: false, alwaysVisible: true),
+    FollowupColumnDef('', 'checkbox', 48,
+        filterable: false, alwaysVisible: true),
+    FollowupColumnDef('S.No', 'sno', 60,
+        filterable: false, alwaysVisible: true),
     FollowupColumnDef('Lead Name', 'lead_name', 180, alwaysVisible: true),
     FollowupColumnDef('Assigned To', 'employee_name', 150),
     FollowupColumnDef('Status', 'status', 130),
@@ -126,14 +128,17 @@ class CompanyLeadsViewModel extends BaseViewModel {
     FollowupColumnDef('Duration', 'svc_duration', 90, filterable: false),
     FollowupColumnDef('Base Price', 'svc_base_price', 110, filterable: false),
     FollowupColumnDef('Tax', 'svc_tax_rate', 90, filterable: false),
-    FollowupColumnDef('Req Duration', 'svc_original_duration', 110, filterable: false),
-    FollowupColumnDef('Next Follow-Up', 'nextFollowUpDate', 130, filterable: false),
+    FollowupColumnDef('Req Duration', 'svc_original_duration', 110,
+        filterable: false),
+    FollowupColumnDef('Next Follow-Up', 'nextFollowUpDate', 130,
+        filterable: false),
     FollowupColumnDef('Add Services', 'wantAddServices', 110),
     FollowupColumnDef('Negotiate', 'negotiate', 100),
     FollowupColumnDef('Quotation', 'quotation_title', 150),
     FollowupColumnDef('Created On', 'created_at', 130, filterable: false),
     FollowupColumnDef('Notes', 'notes', 180),
-    FollowupColumnDef('Action', 'action', 90, filterable: false, alwaysVisible: true),
+    FollowupColumnDef('Action', 'action', 90,
+        filterable: false, alwaysVisible: true),
   ];
 
   // Fields NOT in backend fieldToColumnMap — filtered client-side
@@ -157,7 +162,8 @@ class CompanyLeadsViewModel extends BaseViewModel {
     LeadColumnDef('Assigned To', 'assigned_to_name', 150),
     LeadColumnDef('Notes', 'notes', 180),
     LeadColumnDef('Created On', 'created_at', 190, filterable: false),
-    LeadColumnDef('Action', 'action', 90, filterable: false, alwaysVisible: true),
+    LeadColumnDef('Action', 'action', 90,
+        filterable: false, alwaysVisible: true),
   ];
 
   // ── Leads getters ─────────────────────────────────────────────────────────────
@@ -193,17 +199,27 @@ class CompanyLeadsViewModel extends BaseViewModel {
     var list = _items;
     if (_leadsQuery.isNotEmpty) {
       list = list.where((e) {
-        return (e['lead_name'] ?? '').toString().toLowerCase().contains(_leadsQuery) ||
-            (e['full_name'] ?? '').toString().toLowerCase().contains(_leadsQuery) ||
+        return (e['lead_name'] ?? '')
+                .toString()
+                .toLowerCase()
+                .contains(_leadsQuery) ||
+            (e['full_name'] ?? '')
+                .toString()
+                .toLowerCase()
+                .contains(_leadsQuery) ||
             (e['email'] ?? '').toString().toLowerCase().contains(_leadsQuery) ||
-            (e['city_name'] ?? '').toString().toLowerCase().contains(_leadsQuery);
+            (e['city_name'] ?? '')
+                .toString()
+                .toLowerCase()
+                .contains(_leadsQuery);
       }).toList();
     }
     for (final entry in _colFilters.entries) {
       if (_clientSideFilterFields.contains(entry.key)) {
         final q = entry.value.toLowerCase();
         list = list
-            .where((e) => (e[entry.key] ?? '').toString().toLowerCase().contains(q))
+            .where((e) =>
+                (e[entry.key] ?? '').toString().toLowerCase().contains(q))
             .toList();
       }
     }
@@ -224,8 +240,10 @@ class CompanyLeadsViewModel extends BaseViewModel {
       _followupsPage * _followupsRowsPerPage + followups.length;
 
   bool get followupHasActiveFilters => _followupColFilters.isNotEmpty;
-  Map<String, String> get followupColFilters => Map.unmodifiable(_followupColFilters);
-  Map<String, bool> get followupColVisible => Map.unmodifiable(_followupColVisible);
+  Map<String, String> get followupColFilters =>
+      Map.unmodifiable(_followupColFilters);
+  Map<String, bool> get followupColVisible =>
+      Map.unmodifiable(_followupColVisible);
   bool get followupHasSelection => _followupSelectedIds.isNotEmpty;
   int get followupSelectedCount => _followupSelectedIds.length;
 
@@ -278,7 +296,8 @@ class CompanyLeadsViewModel extends BaseViewModel {
     } else {
       _colFilters[field] = value.trim();
     }
-    debugPrint('=== LEAD FILTER: $field="${value.trim()}" | active: $_colFilters ===');
+    debugPrint(
+        '=== LEAD FILTER: $field="${value.trim()}" | active: $_colFilters ===');
     _currentPage = 0;
     _loaded = false;
     init();
@@ -322,9 +341,13 @@ class CompanyLeadsViewModel extends BaseViewModel {
 
   void toggleSelectAll() {
     if (allCurrentSelected) {
-      for (final e in items) { _selectedIds.remove(e['id']); }
+      for (final e in items) {
+        _selectedIds.remove(e['id']);
+      }
     } else {
-      for (final e in items) { _selectedIds.add(e['id']); }
+      for (final e in items) {
+        _selectedIds.add(e['id']);
+      }
     }
     notifyListeners();
   }
@@ -335,11 +358,17 @@ class CompanyLeadsViewModel extends BaseViewModel {
   }
 
   void nextPage() {
-    if (hasNext) { _currentPage++; init(); }
+    if (hasNext) {
+      _currentPage++;
+      init();
+    }
   }
 
   void prevPage() {
-    if (hasPrev) { _currentPage--; init(); }
+    if (hasPrev) {
+      _currentPage--;
+      init();
+    }
   }
 
   Future<void> init() async {
@@ -349,7 +378,8 @@ class CompanyLeadsViewModel extends BaseViewModel {
     if (_isEmployee) _permissions ??= await _api.getStoredPermissions();
     try {
       final backendFilters = Map.fromEntries(
-        _colFilters.entries.where((e) => !_clientSideFilterFields.contains(e.key)),
+        _colFilters.entries
+            .where((e) => !_clientSideFilterFields.contains(e.key)),
       );
       final result = await _api.getLeadsPaged(
         pipeline: _pipeline,
@@ -369,7 +399,9 @@ class CompanyLeadsViewModel extends BaseViewModel {
       _loaded = true;
       debugPrint('=== LEADS DATA ===');
       debugPrint('Backend total: $_total | After filters: ${items.length}');
-      for (final e in items) { debugPrint(e.toString()); }
+      for (final e in items) {
+        debugPrint(e.toString());
+      }
       debugPrint('=== END LEADS ===');
     } catch (e) {
       if (!_loaded) fetchError = e.toString().replaceFirst('Exception: ', '');
@@ -393,11 +425,17 @@ class CompanyLeadsViewModel extends BaseViewModel {
   }
 
   void nextFollowupsPage() {
-    if (followupsHasNext) { _followupsPage++; initFollowups(); }
+    if (followupsHasNext) {
+      _followupsPage++;
+      initFollowups();
+    }
   }
 
   void prevFollowupsPage() {
-    if (followupsHasPrev) { _followupsPage--; initFollowups(); }
+    if (followupsHasPrev) {
+      _followupsPage--;
+      initFollowups();
+    }
   }
 
   void setFollowupColFilter(String field, String value) {
@@ -441,9 +479,13 @@ class CompanyLeadsViewModel extends BaseViewModel {
 
   void toggleFollowupSelectAll() {
     if (allFollowupCurrentSelected) {
-      for (final e in followups) { _followupSelectedIds.remove(e['id']); }
+      for (final e in followups) {
+        _followupSelectedIds.remove(e['id']);
+      }
     } else {
-      for (final e in followups) { _followupSelectedIds.add(e['id']); }
+      for (final e in followups) {
+        _followupSelectedIds.add(e['id']);
+      }
     }
     notifyListeners();
   }
@@ -458,7 +500,9 @@ class CompanyLeadsViewModel extends BaseViewModel {
         .where((c) => c.key != 'checkbox' && c.key != 'action')
         .toList();
     final exportItems = followupHasSelection
-        ? _followupItems.where((e) => _followupSelectedIds.contains(e['id'])).toList()
+        ? _followupItems
+            .where((e) => _followupSelectedIds.contains(e['id']))
+            .toList()
         : _followupItems;
     final headers = exportCols.map((c) => c.label).toList();
     final rows = <List<String>>[headers];
@@ -493,7 +537,9 @@ class CompanyLeadsViewModel extends BaseViewModel {
       _followupsLoaded = true;
       debugPrint('=== FOLLOWUPS DATA ===');
       debugPrint('Total: $_followupsTotal | Loaded: ${_followupItems.length}');
-      for (final e in _followupItems) { debugPrint(e.toString()); }
+      for (final e in _followupItems) {
+        debugPrint(e.toString());
+      }
       debugPrint('=== END FOLLOWUPS ===');
     } catch (e) {
       if (!_followupsLoaded) {
@@ -569,6 +615,56 @@ class CompanyLeadsViewModel extends BaseViewModel {
       _loaded = false;
       await init();
       return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  List<dynamic> get selectedLeadIds => _selectedIds.toList();
+
+  Future<String?> bulkDeleteLeads() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return 'No leads selected';
+    try {
+      await _api.bulkDeleteLeads(ids, _pipeline);
+      _selectedIds.clear();
+      _loaded = false;
+      await init();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> bulkAssignLeads(String employeeId) async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return 'No leads selected';
+    try {
+      await _api.bulkAssignLeads(ids, employeeId);
+      _selectedIds.clear();
+      _loaded = false;
+      await init();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<String?> bulkImportLeads(List<Map<String, dynamic>> leads) async {
+    try {
+      final result = await _api.bulkImportLeads(leads);
+      _loaded = false;
+      await init();
+      final inserted = result['insertedCount'] ?? 0;
+      final failed = result['failedCount'] ?? 0;
+      if (failed > 0 && inserted == 0) {
+        return 'All $failed lead(s) failed validation — check Bulk Failed tab for reasons';
+      }
+      if (failed > 0) {
+        // Some succeeded — close the dialog but leave a note
+        return 'Imported $inserted lead(s). $failed lead(s) failed — see Bulk Failed tab';
+      }
+      return null; // full success → close dialog silently
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
     }

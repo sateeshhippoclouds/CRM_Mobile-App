@@ -1,10 +1,15 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' show max;
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:stacked/stacked.dart';
+import 'package:xml/xml.dart';
 
 import '../../../../../app/app.locator.dart';
 import '../../../../../services/api_services.dart';
@@ -54,6 +59,28 @@ class _CompanyClientsViewState extends State<CompanyClientsView> {
     showDialog(
       context: context,
       builder: (_) => _CustomizeColumnsDialog(model: model),
+    );
+  }
+
+  void _showHistoryDialog(
+      Map<String, dynamic> item, CompanyClientsViewModel model) {
+    showDialog(
+      context: context,
+      builder: (_) => _ClientHistoryDialog(
+        item: item,
+        isDraft: model.isDraftTab,
+        fetchHistory: model.getClientHistory,
+      ),
+    );
+  }
+
+  void _showBulkImportDialog(CompanyClientsViewModel model) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ClientBulkImportDialog(
+        onImport: (clients) => model.bulkImportClients(clients),
+      ),
     );
   }
 
@@ -163,6 +190,9 @@ class _CompanyClientsViewState extends State<CompanyClientsView> {
                               : null,
                           onColumns: () => _showCustomizeColumns(model),
                           onExportCsv: () => _downloadCsv(model),
+                          onBulkImport: model.canWrite
+                              ? () => _showBulkImportDialog(model)
+                              : null,
                         ),
                         if (model.hasActiveFilters)
                           _ActiveFilterChips(model: model),
@@ -177,6 +207,8 @@ class _CompanyClientsViewState extends State<CompanyClientsView> {
                             onDelete: (item) =>
                                 _showDeleteConfirm(item, model),
                             onReactivate: (item) => _reactivate(item, model),
+                            onViewHistory: (item) =>
+                                _showHistoryDialog(item, model),
                           ),
                         ),
                         _PaginationBar(model: model),
@@ -197,12 +229,14 @@ class _Toolbar extends StatelessWidget {
     this.onAdd,
     required this.onColumns,
     required this.onExportCsv,
+    this.onBulkImport,
   });
   final TextEditingController searchCtrl;
   final CompanyClientsViewModel model;
   final VoidCallback? onAdd;
   final VoidCallback onColumns;
   final VoidCallback onExportCsv;
+  final VoidCallback? onBulkImport;
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +320,14 @@ class _Toolbar extends StatelessWidget {
               tooltip: 'Export CSV',
               onTap: onExportCsv,
             ),
+            if (onBulkImport != null) ...[
+              const SizedBox(width: 4),
+              _IconBtn(
+                icon: Icons.upload_file_outlined,
+                tooltip: 'Bulk Import',
+                onTap: onBulkImport!,
+              ),
+            ],
             const SizedBox(width: 4),
             _IconBtn(
               icon: Icons.view_column_outlined,
@@ -500,6 +542,7 @@ class _ClientTable extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onReactivate,
+    required this.onViewHistory,
   });
   final CompanyClientsViewModel model;
   final ScrollController hScroll;
@@ -508,6 +551,7 @@ class _ClientTable extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>> onEdit;
   final ValueChanged<Map<String, dynamic>> onDelete;
   final ValueChanged<Map<String, dynamic>> onReactivate;
+  final ValueChanged<Map<String, dynamic>> onViewHistory;
 
   static const double _headerH = 48.0;
   static const double _rowH = 52.0;
@@ -571,10 +615,12 @@ class _ClientTable extends StatelessWidget {
                         canUpdate: canUpdate,
                         canDelete: canDelete,
                         isNonActive: model.isNonActiveTab,
+                        isDraft: model.isDraftTab,
                         onToggleSelect: () => model.toggleRowSelection(id),
                         onEdit: () => onEdit(item),
                         onDelete: () => onDelete(item),
                         onReactivate: () => onReactivate(item),
+                        onViewHistory: () => onViewHistory(item),
                       );
                     },
                   ),
@@ -770,10 +816,12 @@ class _DataRow extends StatelessWidget {
     required this.canUpdate,
     required this.canDelete,
     required this.isNonActive,
+    required this.isDraft,
     required this.onToggleSelect,
     required this.onEdit,
     required this.onDelete,
     required this.onReactivate,
+    required this.onViewHistory,
   });
 
   final Map<String, dynamic> item;
@@ -784,10 +832,12 @@ class _DataRow extends StatelessWidget {
   final bool canUpdate;
   final bool canDelete;
   final bool isNonActive;
+  final bool isDraft;
   final VoidCallback onToggleSelect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onReactivate;
+  final VoidCallback onViewHistory;
 
   static const _statusColors = {
     'active': Color(0xff16A34A),
@@ -812,7 +862,7 @@ class _DataRow extends StatelessWidget {
     if (col.key == 'sno') {
       return _C(
         width: col.width,
-        child: Text('${item['id'] ?? rowIndex}',
+        child: Text('$rowIndex',
             style:
                 const TextStyle(fontSize: 12, color: Color(0xff6B7280))),
       );
@@ -832,6 +882,16 @@ class _DataRow extends StatelessWidget {
       );
     }
 
+    if (col.key == 'created_at') {
+      return _C(
+        width: col.width,
+        child: Text(
+          CompanyClientsViewModel.fmtDate(item['created_at']),
+          style: const TextStyle(fontSize: 12, color: Color(0xff374151)),
+        ),
+      );
+    }
+
     if (col.key == 'action') {
       final phone = item['phone']?.toString() ?? '';
       final clientName = item['client_name']?.toString() ?? '';
@@ -842,7 +902,7 @@ class _DataRow extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (phone.isNotEmpty) ...[
+            if (phone.isNotEmpty && !isDraft) ...[
               CallButton(
                 phoneNumber: phone,
                 contactName: clientName,
@@ -852,7 +912,7 @@ class _DataRow extends StatelessWidget {
               ),
               const SizedBox(width: 2),
             ],
-            if (canUpdate)
+            if (canUpdate && !isDraft)
               _Btn(
                   icon: Icons.edit_outlined,
                   color: kCrmBlue,
@@ -864,7 +924,7 @@ class _DataRow extends StatelessWidget {
                   color: const Color(0xffDC2626),
                   onTap: onDelete),
             ],
-            if (isNonActive) ...[
+            if (isNonActive && !isDraft) ...[
               const SizedBox(width: 2),
               _Btn(
                 icon: Icons.refresh_rounded,
@@ -873,6 +933,22 @@ class _DataRow extends StatelessWidget {
                 tooltip: 'Reactivate',
               ),
             ],
+            if (isDraft && canUpdate) ...[
+              const SizedBox(width: 2),
+              _Btn(
+                icon: Icons.refresh_rounded,
+                color: const Color(0xff16A34A),
+                onTap: onReactivate,
+                tooltip: 'Convert to Client',
+              ),
+            ],
+            const SizedBox(width: 2),
+            _Btn(
+              icon: Icons.remove_red_eye_outlined,
+              color: const Color(0xff7C3AED),
+              onTap: onViewHistory,
+              tooltip: 'View History',
+            ),
           ],
         ),
       );
@@ -1756,6 +1832,1418 @@ class _AddClientDialogState extends State<_AddClientDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Client History Dialog ────────────────────────────────────────────────────
+
+class _ClientHistoryDialog extends StatefulWidget {
+  const _ClientHistoryDialog({
+    required this.item,
+    required this.isDraft,
+    required this.fetchHistory,
+  });
+  final Map<String, dynamic> item;
+  final bool isDraft;
+  final Future<Map<String, dynamic>?> Function(dynamic) fetchHistory;
+
+  @override
+  State<_ClientHistoryDialog> createState() => _ClientHistoryDialogState();
+}
+
+class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
+  Map<String, dynamic>? _data;
+  bool _loading = true;
+  String? _error;
+  final Set<int> _expanded = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (widget.isDraft) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    final id = widget.item['id'];
+    final result = await widget.fetchHistory(id);
+    if (!mounted) return;
+    setState(() {
+      _data = result;
+      _loading = false;
+      if (result == null) _error = 'Could not load client history';
+    });
+  }
+
+  static String _fmt(dynamic v) {
+    if (v == null) return '—';
+    final s = v.toString().trim();
+    if (s.isEmpty || s == 'null') return '—';
+    try {
+      final dt = DateTime.parse(s);
+      return '${dt.day.toString().padLeft(2, '0')}/'
+          '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    } catch (_) {}
+    return s;
+  }
+
+  static String _money(dynamic v) {
+    final d = double.tryParse(v?.toString() ?? '') ?? 0;
+    return d.toStringAsFixed(2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.item['client_name']?.toString() ?? '—';
+    final screenH = MediaQuery.of(context).size.height;
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 760, maxHeight: screenH * 0.88),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Header ────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 14, 14),
+              decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xffE5E7EB)))),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Client History  $name',
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: kCrmBlue)),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xffEF4444),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(Icons.close,
+                          size: 16, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // ── Body ──────────────────────────────────────────────────
+            Flexible(
+              child: _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(48),
+                      child: CircularProgressIndicator(color: kCrmBlue),
+                    )
+                  : _error != null
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(_error!,
+                              style: const TextStyle(
+                                  color: Color(0xffDC2626))),
+                        )
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: widget.isDraft
+                              ? _buildDraftBody()
+                              : _buildHistoryBody(),
+                        ),
+            ),
+            // ── Footer ────────────────────────────────────────────────
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: const BoxDecoration(
+                  border:
+                      Border(top: BorderSide(color: Color(0xffE5E7EB)))),
+              child: Center(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xff9CA3AF)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 36, vertical: 10),
+                  ),
+                  child: const Text('CLOSE',
+                      style: TextStyle(
+                          color: Color(0xff6B7280),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Draft: failure reasons + submitted data ───────────────────────────────
+  Widget _buildDraftBody() {
+    final item = widget.item;
+    final reason = item['failure_reasons']?.toString() ?? '—';
+    final fields = <String, String>{
+      'Client Name': item['client_name']?.toString() ?? '—',
+      'Contact Person': item['contact_person']?.toString() ?? '—',
+      'Email': item['email']?.toString() ?? '—',
+      'Phone': item['phone']?.toString() ?? '—',
+      'City': item['city']?.toString() ?? '—',
+      'State': item['state']?.toString() ?? '—',
+      'Country': item['country']?.toString() ?? '—',
+      'Failed At': _fmt(item['created_at']),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xffFEF2F2),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xffFCA5A5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Failure Reason',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xffDC2626))),
+              const SizedBox(height: 4),
+              Text(reason,
+                  style: const TextStyle(
+                      fontSize: 12, color: Color(0xff374151))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text('Submitted Data',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: kCrmBlue)),
+        const SizedBox(height: 8),
+        ...fields.entries.map((e) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 130,
+                    child: Text(e.key,
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xff6B7280),
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  Expanded(
+                    child: Text(e.value,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xff374151))),
+                  ),
+                ],
+              ),
+            )),
+      ],
+    );
+  }
+
+  // ── Active/Inactive: subscription history ─────────────────────────────────
+  Widget _buildHistoryBody() {
+    final client = _data?['client'] as Map<String, dynamic>? ?? {};
+    final summary = _data?['summary'] as Map<String, dynamic>? ?? {};
+    final subscriptions = (_data?['subscriptions'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ??
+        [];
+
+    final agreed =
+        double.tryParse(summary['revised_total']?.toString() ?? '0') ?? 0;
+    final carriedOver =
+        double.tryParse(summary['carried_over']?.toString() ?? '0') ?? 0;
+    final toCollect =
+        double.tryParse(summary['to_collect']?.toString() ?? '0') ?? 0;
+    final totalPaid =
+        double.tryParse(summary['total_paid']?.toString() ?? '0') ?? 0;
+    final balance = toCollect - totalPaid;
+
+    // Compute All-Terms totals for the footer row.
+    // Balance = current/last term's balance only (not sum of all terms),
+    // because paid terms' balances are carried forward, not outstanding.
+    double allAgreed = 0, allPaid = 0;
+    double lastTermBalance = 0;
+    final currentTermNum =
+        _data?['client']?['current_term_number']?.toString();
+    Map<String, dynamic>? currentSub;
+    for (final sub in subscriptions) {
+      final a =
+          double.tryParse(sub['revised_total_amount']?.toString() ?? '0') ?? 0;
+      final p =
+          double.tryParse(sub['total_paid']?.toString() ?? '0') ?? 0;
+      allAgreed += a;
+      allPaid += p;
+      if (currentTermNum != null &&
+          sub['term_number']?.toString() == currentTermNum) {
+        currentSub = sub;
+      }
+    }
+    // Fall back to the last subscription if current term not identified
+    currentSub ??= subscriptions.isNotEmpty ? subscriptions.last : null;
+    if (currentSub != null) {
+      final a =
+          double.tryParse(currentSub['revised_total_amount']?.toString() ?? '0') ??
+              0;
+      final c =
+          double.tryParse(currentSub['carried_over_balance']?.toString() ?? '0') ??
+              0;
+      final tc =
+          double.tryParse(currentSub['to_collect']?.toString() ?? '') ?? (a + c);
+      final p =
+          double.tryParse(currentSub['total_paid']?.toString() ?? '0') ?? 0;
+      lastTermBalance = tc - p;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Client Information card ────────────────────────────────
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xffF0F9FF),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xffBAE6FD)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Client Information',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: kCrmBlue)),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  _infoItem(
+                      'Name',
+                      client['client_name']?.toString() ??
+                          widget.item['client_name']?.toString() ??
+                          '—'),
+                  const SizedBox(width: 16),
+                  _infoItem(
+                      'Email',
+                      client['email']?.toString() ??
+                          widget.item['email']?.toString() ??
+                          '—'),
+                  const SizedBox(width: 16),
+                  _infoItem(
+                      'Phone',
+                      client['phone']?.toString() ??
+                          widget.item['phone']?.toString() ??
+                          '—'),
+                  const SizedBox(width: 16),
+                  _infoItem(
+                      'Assigned To',
+                      // API client object returns numeric ID for assigned_to;
+                      // prefer the name fields from the list row or employee_name.
+                      client['employee_name']?.toString().trim().isNotEmpty == true
+                          ? client['employee_name'].toString().trim()
+                          : client['assigned_to_name']?.toString().trim().isNotEmpty == true
+                              ? client['assigned_to_name'].toString().trim()
+                              : widget.item['assigned_to']?.toString().trim().isNotEmpty == true
+                                  ? widget.item['assigned_to'].toString().trim()
+                                  : '—'),
+                ]),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // ── Summary boxes (horizontal scroll to prevent overflow) ──
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            _summaryBox('Agreed', _money(agreed), const Color(0xff2563EB)),
+            const SizedBox(width: 8),
+            _summaryBox(
+                'Carried Over', _money(carriedOver), const Color(0xffF97316)),
+            const SizedBox(width: 8),
+            _summaryBox(
+                'To Collect', _money(toCollect), const Color(0xffD97706)),
+            const SizedBox(width: 8),
+            _summaryBox(
+                'Total Paid', _money(totalPaid), const Color(0xff16A34A)),
+            const SizedBox(width: 8),
+            _summaryBox(
+                'Balance',
+                _money(balance),
+                balance > 0
+                    ? const Color(0xffDC2626)
+                    : const Color(0xff16A34A)),
+          ]),
+        ),
+        if (subscriptions.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          // ── Subscription Terms ───────────────────────────────────
+          Text('Subscription Terms (${subscriptions.length})',
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: kCrmBlue)),
+          const SizedBox(height: 8),
+          _buildTermsTable(
+              subscriptions, allAgreed, allPaid, lastTermBalance),
+          const SizedBox(height: 20),
+          // ── Subscription Details ─────────────────────────────────
+          Text('Subscription Details (${subscriptions.length})',
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: kCrmBlue)),
+          const SizedBox(height: 8),
+          ...subscriptions.asMap().entries
+              .map((e) => _buildSubDetailRow(e.key, e.value)),
+        ],
+      ],
+    );
+  }
+
+  // ── Subscription Terms table ───────────────────────────────────────────────
+  Widget _buildTermsTable(List<Map<String, dynamic>> subs, double allAgreed,
+      double allPaid, double allBalance) {
+    const cols = [140.0, 90.0, 105.0, 105.0, 82.0, 90.0, 80.0];
+
+    Widget hdrCell(String t, double w) => SizedBox(
+          width: w,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: Text(t,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff374151))),
+          ),
+        );
+
+    Widget cell(double w, Widget child) => SizedBox(
+          width: w,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: child,
+          ),
+        );
+
+    Widget moneyCell(double w, double v,
+            {Color? color, bool bold = false}) =>
+        cell(
+            w,
+            Text(v.toStringAsFixed(2),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: color ?? const Color(0xff374151),
+                    fontWeight: bold
+                        ? FontWeight.w700
+                        : (color != null
+                            ? FontWeight.w600
+                            : FontWeight.normal))));
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xffF3E8FF),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(8)),
+              border: Border.all(color: const Color(0xffE9D5FF)),
+            ),
+            child: Row(children: [
+              hdrCell('Term', cols[0]),
+              hdrCell('Agreed', cols[1]),
+              hdrCell('Carried Over', cols[2]),
+              hdrCell('To Collect', cols[3]),
+              hdrCell('Paid', cols[4]),
+              hdrCell('Balance', cols[5]),
+              hdrCell('Status', cols[6]),
+            ]),
+          ),
+          // Data rows
+          ...subs.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final sub = entry.value;
+            final a =
+                double.tryParse(sub['revised_total_amount']?.toString() ?? '0') ??
+                    0;
+            final c = double.tryParse(
+                    sub['carried_over_balance']?.toString() ?? '0') ??
+                0;
+            final tc =
+                double.tryParse(sub['to_collect']?.toString() ?? '') ?? (a + c);
+            final p =
+                double.tryParse(sub['total_paid']?.toString() ?? '0') ?? 0;
+            final bal = tc - p;
+            final status = sub['status']?.toString() ?? '';
+            final isCurrent = sub['term_number']?.toString() ==
+                _data?['client']?['current_term_number']?.toString();
+            final termLabel =
+                'Term ${sub['term_number'] ?? idx + 1}${isCurrent ? ' (Current)' : ''}';
+            final termColor = isCurrent
+                ? const Color(0xff16A34A)
+                : const Color(0xff7C3AED);
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  left: BorderSide(color: Color(0xffE5E7EB)),
+                  right: BorderSide(color: Color(0xffE5E7EB)),
+                  bottom: BorderSide(color: Color(0xffE5E7EB)),
+                ),
+              ),
+              child: Row(children: [
+                cell(
+                    cols[0],
+                    Row(children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: termColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                          child: Text(termLabel,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: termColor,
+                                  fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis)),
+                    ])),
+                moneyCell(cols[1], a),
+                // Carried over: show "–" when zero (no prior term balance)
+                cell(
+                    cols[2],
+                    c == 0
+                        ? const Text('–',
+                            style: TextStyle(
+                                fontSize: 12, color: Color(0xff9CA3AF)))
+                        : Text(c.toStringAsFixed(2),
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xffF97316),
+                                fontWeight: FontWeight.w600))),
+                moneyCell(cols[3], tc,
+                    color: const Color(0xffD97706)),
+                moneyCell(cols[4], p,
+                    color: const Color(0xff16A34A)),
+                moneyCell(cols[5], bal,
+                    color: bal > 0
+                        ? const Color(0xffDC2626)
+                        : const Color(0xff16A34A)),
+                cell(
+                    cols[6],
+                    Text(
+                        _termStatusLabel(status),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _termStatusColor(status)))),
+              ]),
+            );
+          }),
+          // All Terms Total row
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xffF9FAFB),
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(8)),
+              border: Border.all(color: const Color(0xffE5E7EB)),
+            ),
+            child: Row(children: [
+              cell(
+                  cols[0],
+                  const Text('All Terms Total',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xff374151)))),
+              moneyCell(cols[1], allAgreed, bold: true),
+              cell(cols[2], const SizedBox()),
+              cell(cols[3], const SizedBox()),
+              moneyCell(cols[4], allPaid,
+                  color: const Color(0xff16A34A), bold: true),
+              moneyCell(cols[5], allBalance,
+                  color: allBalance > 0
+                      ? const Color(0xffDC2626)
+                      : const Color(0xff16A34A),
+                  bold: true),
+              cell(cols[6], const SizedBox()),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Subscription Details expandable row ───────────────────────────────────
+  Widget _buildSubDetailRow(int idx, Map<String, dynamic> sub) {
+    final isExpanded = _expanded.contains(idx);
+    final isCurrent = sub['term_number']?.toString() ==
+        _data?['client']?['current_term_number']?.toString();
+    final termNum = sub['term_number'] ?? idx + 1;
+
+    List<Map<String, dynamic>> services = [];
+    try {
+      final raw = sub['services'];
+      if (raw is List) {
+        services =
+            raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } else if (raw is String && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw) as List;
+        services =
+            decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (_) {}
+
+    final paid =
+        double.tryParse(sub['total_paid']?.toString() ?? '0') ?? 0;
+    final carriedOver =
+        double.tryParse(sub['carried_over_balance']?.toString() ?? '0') ?? 0;
+    final agreed =
+        double.tryParse(sub['revised_total_amount']?.toString() ?? '0') ?? 0;
+    final toCollect =
+        double.tryParse(sub['to_collect']?.toString() ?? '') ??
+            (agreed + carriedOver);
+    final balance = toCollect - paid;
+    final svcCount = services.length;
+
+    final termBgColor =
+        isCurrent ? const Color(0xffFFF7ED) : const Color(0xffF5F3FF);
+    final termBorderColor =
+        isCurrent ? const Color(0xffFED7AA) : const Color(0xffDDD6FE);
+    final termTextColor =
+        isCurrent ? const Color(0xffEA580C) : const Color(0xff7C3AED);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header bar (tap to expand/collapse)
+        GestureDetector(
+          onTap: () => setState(() {
+            if (isExpanded) {
+              _expanded.remove(idx);
+            } else {
+              _expanded.add(idx);
+            }
+          }),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            margin: EdgeInsets.only(bottom: isExpanded ? 0 : 6),
+            decoration: BoxDecoration(
+              color: isExpanded
+                  ? (isCurrent
+                      ? const Color(0xffFFF7ED)
+                      : const Color(0xffFAF5FF))
+                  : Colors.white,
+              borderRadius: isExpanded
+                  ? const BorderRadius.vertical(top: Radius.circular(8))
+                  : BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xffE5E7EB)),
+            ),
+            child: Row(children: [
+              // Term badge
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: termBgColor,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: termBorderColor),
+                ),
+                child: Text('Term $termNum',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: termTextColor)),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                  '$svcCount Service${svcCount == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xff374151))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                    'Paid: ₹${_money(paid)}  |  Balance: ₹${_money(balance)}',
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xff6B7280))),
+              ),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: const Color(0xff6B7280),
+              ),
+            ]),
+          ),
+        ),
+        // Expanded detail panel
+        if (isExpanded)
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(8)),
+              border: Border.all(color: const Color(0xffE5E7EB)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Service table header
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xffF9FAFB),
+                    border: Border(
+                        bottom: BorderSide(color: Color(0xffE5E7EB))),
+                  ),
+                  child: const Row(children: [
+                    Expanded(
+                        flex: 4,
+                        child: Text('Service',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff6B7280)))),
+                    Expanded(
+                        flex: 2,
+                        child: Text('Duration',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff6B7280)))),
+                    Expanded(
+                        flex: 2,
+                        child: Text('Amount',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff6B7280)))),
+                  ]),
+                ),
+                // Service rows
+                if (services.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text('No service details available',
+                        style: TextStyle(
+                            fontSize: 12, color: Color(0xff9CA3AF))),
+                  )
+                else ...[
+                  ...services.map((svc) {
+                    final svcName = svc['service_name']?.toString() ??
+                        svc['product_name']?.toString() ??
+                        '—';
+                    final dur = svc['duration']?.toString() ?? '—';
+                    final amt =
+                        double.tryParse(svc['total_amount']?.toString() ?? '')
+                            ?.toStringAsFixed(2) ??
+                            '—';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(
+                                  color: Color(0xffF3F4F6)))),
+                      child: Row(children: [
+                        Expanded(
+                            flex: 4,
+                            child: Text(svcName,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xff374151)))),
+                        Expanded(
+                            flex: 2,
+                            child: Text(dur,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xff374151)))),
+                        Expanded(
+                            flex: 2,
+                            child: Text('₹$amt',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xff374151)))),
+                      ]),
+                    );
+                  }),
+                  // Total row
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    child: Row(children: [
+                      const Expanded(
+                          flex: 4,
+                          child: Text('Total',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xff374151)))),
+                      const Expanded(flex: 2, child: SizedBox()),
+                      Expanded(
+                          flex: 2,
+                          child: Text(
+                              '₹${(agreed).toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xff2563EB)))),
+                    ]),
+                  ),
+                  // Balance from previous term row (only when carried over > 0)
+                  if (carriedOver > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: const BoxDecoration(
+                        color: Color(0xffFFFBEB),
+                        border: Border(
+                            top: BorderSide(color: Color(0xffFED7AA))),
+                      ),
+                      child: Row(children: [
+                        const Expanded(
+                            flex: 4,
+                            child: Text('+ Balance from Previous Term',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xffD97706),
+                                    fontWeight: FontWeight.w500))),
+                        const Expanded(flex: 2, child: SizedBox()),
+                        Expanded(
+                            flex: 2,
+                            child: Text(
+                                '₹${carriedOver.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xffD97706),
+                                    fontWeight: FontWeight.w600))),
+                      ]),
+                    ),
+                ],
+                // Action buttons
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: const BoxDecoration(
+                      border:
+                          Border(top: BorderSide(color: Color(0xffE5E7EB)))),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _actionBtn(Icons.remove_red_eye_outlined, 'VIEW PDF',
+                          const Color(0xff7C3AED), const Color(0xffF5F3FF)),
+                      _actionBtn(Icons.download_outlined, 'DOWNLOAD PDF',
+                          const Color(0xff2563EB), const Color(0xffEFF6FF)),
+                      _actionBtn(Icons.email_outlined, 'SEND MAIL',
+                          const Color(0xff0D9488), const Color(0xffF0FDFA)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  static Widget _actionBtn(
+          IconData icon, String label, Color color, Color bg) =>
+      OutlinedButton.icon(
+        onPressed: () {},
+        icon: Icon(icon, size: 14, color: color),
+        label: Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color)),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: bg,
+          side: BorderSide(color: color.withValues(alpha: 0.4)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+
+  Widget _summaryBox(String label, String value, Color color) => Container(
+        width: 120,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: color,
+                  fontWeight: FontWeight.w700)),
+        ]),
+      );
+
+  // "completed" from backend maps to the user-facing label "Paid"
+  static String _termStatusLabel(String status) {
+    if (status.isEmpty) return '—';
+    final s = status.toLowerCase();
+    if (s == 'completed' || s == 'paid') return 'Paid';
+    if (s == 'active') return 'Active';
+    return status[0].toUpperCase() + status.substring(1);
+  }
+
+  static Color _termStatusColor(String status) {
+    final s = status.toLowerCase();
+    if (s == 'completed' || s == 'paid') return const Color(0xff16A34A);
+    if (s == 'active') return const Color(0xffEA580C);
+    return const Color(0xff6B7280);
+  }
+
+  static Widget _infoItem(String label, String value) => SizedBox(
+        width: 160,
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 10, color: Color(0xff6B7280))),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xff111827))),
+            ]),
+      );
+}
+
+// ─── Bulk Import Dialog ───────────────────────────────────────────────────────
+
+class _ClientBulkImportDialog extends StatefulWidget {
+  const _ClientBulkImportDialog({required this.onImport});
+  final Future<String?> Function(List<Map<String, dynamic>>) onImport;
+
+  @override
+  State<_ClientBulkImportDialog> createState() =>
+      _ClientBulkImportDialogState();
+}
+
+class _ClientBulkImportDialogState extends State<_ClientBulkImportDialog> {
+  List<Map<String, dynamic>>? _parsed;
+  String? _parseError;
+  bool _submitting = false;
+  String? _submitError;
+
+  // Required columns (CSV/xlsx headers after normalisation)
+  static const _requiredCols = ['client_name', 'phone'];
+
+  // All recognised columns mapped to the backend payload
+  static const _allCols = [
+    'client_name', 'contact_person', 'email', 'phone',
+    'alternate_contact', 'tax_id', 'street_address',
+    'city', 'state', 'postal_code', 'country',
+    'notes', 'negotiate', 'tax_option', 'round_off',
+    'payment_terms', 'preferred_payment',
+    'services', 'start_dates', 'required_durations',
+  ];
+
+  // camelCase / spaces → snake_case
+  static String _normalizeHeader(String h) {
+    h = h.trim().replaceAll('"', '');
+    h = h.replaceAllMapped(
+      RegExp(r'([A-Z])'),
+      (m) => '_${m.group(0)!.toLowerCase()}',
+    );
+    h = h.replaceAll(' ', '_').toLowerCase();
+    if (h.startsWith('_')) h = h.substring(1);
+    return h;
+  }
+
+  // Proper CSV field splitter (handles quoted fields with commas inside)
+  static List<String> _splitCsvLine(String line) {
+    final fields = <String>[];
+    final buf = StringBuffer();
+    bool inQuotes = false;
+    for (int i = 0; i < line.length; i++) {
+      final ch = line[i];
+      if (ch == '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          buf.write('"');
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch == ',' && !inQuotes) {
+        fields.add(buf.toString().trim());
+        buf.clear();
+      } else {
+        buf.write(ch);
+      }
+    }
+    fields.add(buf.toString().trim());
+    return fields;
+  }
+
+  void _parseCsv(String raw) {
+    try {
+      raw = raw.replaceFirst('﻿', ''); // strip BOM
+      raw = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      final lines = raw
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+      if (lines.length < 2) {
+        setState(() =>
+            _parseError = 'CSV must have a header row and data rows');
+        return;
+      }
+      final headers =
+          _splitCsvLine(lines.first).map(_normalizeHeader).toList();
+      for (final req in _requiredCols) {
+        if (!headers.contains(req)) {
+          setState(() => _parseError = 'Missing required column: $req');
+          return;
+        }
+      }
+      final rows = <Map<String, dynamic>>[];
+      for (final line in lines.skip(1)) {
+        final vals = _splitCsvLine(line);
+        final row = <String, dynamic>{};
+        for (int i = 0; i < headers.length; i++) {
+          if (_allCols.contains(headers[i])) {
+            row[headers[i]] = i < vals.length ? vals[i] : '';
+          }
+        }
+        if ((row['client_name'] ?? '').toString().trim().isNotEmpty &&
+            (row['phone'] ?? '').toString().trim().isNotEmpty) {
+          rows.add(row);
+        }
+      }
+      if (rows.isEmpty) {
+        setState(() => _parseError =
+            'No valid rows found — ensure client_name and phone have data');
+        return;
+      }
+      setState(() {
+        _parsed = rows;
+        _parseError = null;
+      });
+    } catch (e) {
+      setState(() => _parseError = 'Parse error: $e');
+    }
+  }
+
+  void _parseXlsx(Uint8List bytes) {
+    try {
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      // 1. Shared strings table
+      final sharedStrings = <String>[];
+      final ssFile = archive.findFile('xl/sharedStrings.xml');
+      if (ssFile != null) {
+        final ssBytes = ssFile.content;
+        if (ssBytes.isNotEmpty) {
+          final doc = XmlDocument.parse(utf8.decode(ssBytes));
+          for (final si in doc.findAllElements('si')) {
+            sharedStrings
+                .add(si.findAllElements('t').map((t) => t.innerText).join());
+          }
+        }
+      }
+
+      // 2. First worksheet (try common paths)
+      ArchiveFile? sheetFile;
+      for (final path in [
+        'xl/worksheets/sheet1.xml',
+        'xl/worksheets/Sheet1.xml',
+        'xl/worksheets/sheet.xml',
+      ]) {
+        sheetFile = archive.findFile(path);
+        if (sheetFile != null) break;
+      }
+      if (sheetFile == null) {
+        for (final f in archive.files) {
+          if (f.name.startsWith('xl/worksheets/') && f.name.endsWith('.xml')) {
+            sheetFile = f;
+            break;
+          }
+        }
+      }
+
+      if (sheetFile == null) {
+        if (mounted) setState(() => _parseError = 'No worksheet found in Excel file');
+        return;
+      }
+
+      final sheetBytes = sheetFile.content;
+      final sheetDoc = XmlDocument.parse(utf8.decode(sheetBytes));
+
+      // 3. Build rows
+      int xlColIndex(String ref) {
+        final letters = ref.replaceAll(RegExp(r'[0-9]'), '').toUpperCase();
+        int idx = 0;
+        for (final ch in letters.codeUnits) {
+          idx = idx * 26 + (ch - 64);
+        }
+        return idx - 1;
+      }
+
+      final rows = <List<String>>[];
+      for (final rowEl in sheetDoc.findAllElements('row')) {
+        final cells = <String>[];
+        for (final cell in rowEl.findAllElements('c')) {
+          final ref = cell.getAttribute('r') ?? '';
+          final colIdx = xlColIndex(ref);
+          while (cells.length < colIdx) { cells.add(''); }
+          final type = cell.getAttribute('t') ?? '';
+          final vEls = cell.findElements('v');
+          final vEl = vEls.isEmpty ? null : vEls.first;
+          String value = '';
+          if (type == 's') {
+            final idx = int.tryParse(vEl?.innerText.trim() ?? '') ?? -1;
+            value = (idx >= 0 && idx < sharedStrings.length)
+                ? sharedStrings[idx]
+                : '';
+          } else if (type == 'inlineStr') {
+            value = cell.findAllElements('t').map((t) => t.innerText).join();
+          } else {
+            value = vEl?.innerText ?? '';
+          }
+          cells.add(value.trim());
+        }
+        if (cells.isNotEmpty) rows.add(cells);
+      }
+
+      if (rows.length < 2) {
+        if (mounted) {
+          setState(() => _parseError =
+              'Excel sheet must have a header row and data rows (found ${rows.length})');
+        }
+        return;
+      }
+
+      // 4. Headers → validate → map rows
+      final headers = rows.first.map(_normalizeHeader).toList();
+      for (final req in _requiredCols) {
+        if (!headers.contains(req)) {
+          if (mounted) {
+            setState(() => _parseError =
+                'Missing required column: $req (found: ${headers.join(', ')})');
+          }
+          return;
+        }
+      }
+
+      final result = <Map<String, dynamic>>[];
+      for (final row in rows.skip(1)) {
+        final map = <String, dynamic>{};
+        for (int i = 0; i < headers.length; i++) {
+          if (_allCols.contains(headers[i])) {
+            map[headers[i]] = (i < row.length ? row[i] : '').trim();
+          }
+        }
+        final name = (map['client_name'] ?? '').toString().trim();
+        final phone = (map['phone'] ?? '').toString().trim();
+        if (name.isNotEmpty && phone.isNotEmpty) result.add(map);
+      }
+
+      if (result.isEmpty) {
+        final sample =
+            rows.length > 1 ? rows[1].take(4).join(' | ') : '(no rows)';
+        if (mounted) {
+          setState(() => _parseError =
+              'No valid rows found — client_name and phone must have values. '
+              'First data row: $sample');
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _parsed = result;
+          _parseError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _parseError = 'Excel parse error: $e');
+    }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv', 'xlsx', 'xls'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) setState(() => _parseError = 'Could not read file bytes');
+        return;
+      }
+      final ext = (file.extension ?? '').toLowerCase();
+      if (ext == 'csv') {
+        _parseCsv(utf8.decode(bytes));
+      } else if (ext == 'xlsx' || ext == 'xls') {
+        _parseXlsx(bytes);
+      } else {
+        if (mounted) {
+          setState(() => _parseError = 'Unsupported file type. Use .csv or .xlsx');
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _parseError = 'Error picking file: $e');
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_parsed == null) return;
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
+    final msg = await widget.onImport(_parsed!);
+    if (!mounted) return;
+    final isPartial = msg != null &&
+        msg.contains('Imported') &&
+        msg.contains('failed');
+    if (msg == null || isPartial) {
+      Navigator.pop(context);
+      if (isPartial && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          backgroundColor: const Color(0xffD97706),
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    } else {
+      setState(() {
+        _submitting = false;
+        _submitError = msg;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: const BoxDecoration(
+                  border:
+                      Border(bottom: BorderSide(color: Color(0xffE5E7EB)))),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Bulk Import Clients',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: kCrmBlue)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close,
+                        size: 20, color: Color(0xff6B7280)),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+            // Body
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Instructions
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xffEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xffBFDBFE)),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Format Instructions',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: kCrmBlue)),
+                          SizedBox(height: 6),
+                          Text(
+                            'Required: client_name, phone\n'
+                            'Optional: contact_person, email, alternate_contact,\n'
+                            '  tax_id, street_address, city, state, postal_code,\n'
+                            '  country, notes, services, start_dates,\n'
+                            '  required_durations\n'
+                            'Tip: services = comma-separated service names\n'
+                            'Valid data → Active tab  |  Failed → Draft tab',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xff374151)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Pick file button
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _pickFile,
+                        icon: const Icon(Icons.upload_file_outlined, size: 18),
+                        label: Text(_parsed != null
+                            ? '${_parsed!.length} rows loaded — tap to change'
+                            : 'Choose File (.csv / .xlsx)'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kCrmBlue,
+                          side: const BorderSide(color: kCrmBlue),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                    if (_parseError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_parseError!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xffDC2626))),
+                    ],
+                    if (_parsed != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffF0FDF4),
+                          borderRadius: BorderRadius.circular(8),
+                          border:
+                              Border.all(color: const Color(0xff86EFAC)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline,
+                                size: 16, color: Color(0xff16A34A)),
+                            const SizedBox(width: 8),
+                            Text('${_parsed!.length} client(s) ready to import',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xff16A34A),
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_submitError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_submitError!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xffDC2626))),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Footer
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                  border:
+                      Border(top: BorderSide(color: Color(0xffE5E7EB)))),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed:
+                        _submitting ? null : () => Navigator.pop(context),
+                    child: const Text('CANCEL',
+                        style: TextStyle(color: Color(0xff6B7280))),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed:
+                        (_parsed == null || _submitting) ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: kCrmBlue,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8))),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('IMPORT'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

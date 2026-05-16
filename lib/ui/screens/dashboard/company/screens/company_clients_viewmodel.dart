@@ -67,6 +67,8 @@ class CompanyClientsViewModel extends BaseViewModel {
   };
 
   static const List<int> rowsPerPageOptions = [25, 50, 100];
+
+  // Columns for active / inactive tabs
   static const List<ClientColumnDef> allColumns = [
     ClientColumnDef('', 'checkbox', 48, filterable: false, alwaysVisible: true),
     ClientColumnDef('S.No', 'sno', 60, filterable: false, alwaysVisible: true),
@@ -87,7 +89,23 @@ class CompanyClientsViewModel extends BaseViewModel {
     ClientColumnDef('Req Duration', 'svc_req_duration', 110, filterable: false),
     ClientColumnDef('Status', 'status', 100),
     ClientColumnDef('Quotation', 'quotation_title', 140),
-    ClientColumnDef('Action', 'action', 120, filterable: false, alwaysVisible: true),
+    ClientColumnDef('Action', 'action', 155, filterable: false, alwaysVisible: true),
+  ];
+
+  // Columns specific to the Draft (bulk-failed) tab
+  static const List<ClientColumnDef> draftColumns = [
+    ClientColumnDef('', 'checkbox', 48, filterable: false, alwaysVisible: true),
+    ClientColumnDef('S.No', 'sno', 60, filterable: false, alwaysVisible: true),
+    ClientColumnDef('Client Name', 'client_name', 160),
+    ClientColumnDef('Contact Person', 'contact_person', 150),
+    ClientColumnDef('Email', 'email', 200),
+    ClientColumnDef('Phone', 'phone', 130),
+    ClientColumnDef('City', 'city', 110),
+    ClientColumnDef('State', 'state', 130),
+    ClientColumnDef('Country', 'country', 110),
+    ClientColumnDef('Reason', 'failure_reasons', 260),
+    ClientColumnDef('Failed At', 'created_at', 130),
+    ClientColumnDef('Action', 'action', 140, filterable: false, alwaysVisible: true),
   ];
 
   static const tabOptions = [
@@ -123,9 +141,11 @@ class CompanyClientsViewModel extends BaseViewModel {
   bool get someCurrentSelected =>
       items.any((e) => _selectedIds.contains(e['id']));
 
-  List<ClientColumnDef> get visibleColumns => allColumns
-      .where((c) => c.alwaysVisible || (_colVisible[c.key] ?? true))
-      .toList();
+  List<ClientColumnDef> get visibleColumns => isDraftTab
+      ? draftColumns
+      : allColumns
+          .where((c) => c.alwaysVisible || (_colVisible[c.key] ?? true))
+          .toList();
 
   List<Map<String, dynamic>> get items {
     var list = _items;
@@ -369,6 +389,35 @@ class CompanyClientsViewModel extends BaseViewModel {
       await _api.updateClient(id, data, tab: srcTab);
       _loaded = false;
       await init();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  Future<Map<String, dynamic>?> getClientHistory(dynamic clientId) async {
+    try {
+      return await _api.getClientDetailForSale(clientId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> bulkImportClients(List<Map<String, dynamic>> clients) async {
+    try {
+      final result = await _api.bulkImportClients(clients);
+      _loaded = false;
+      await init();
+      final inserted = result['inserted'];
+      final failed = result['failed'];
+      final insertedCount = inserted is List ? inserted.length : (result['insertedCount'] ?? 0);
+      final failedCount = failed is List ? failed.length : (result['failedCount'] ?? 0);
+      if (failedCount > 0 && insertedCount == 0) {
+        return 'All $failedCount client(s) failed validation — check Draft tab for reasons';
+      }
+      if (failedCount > 0) {
+        return 'Imported $insertedCount client(s). $failedCount client(s) failed — see Draft tab';
+      }
       return null;
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');

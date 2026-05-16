@@ -275,7 +275,11 @@ class HippoAuthService {
               .timeout(_timeout);
           break;
         case 'DELETE':
-          response = await http.delete(uri, headers: headers).timeout(_timeout);
+          response = await http
+              .delete(uri,
+                  headers: headers,
+                  body: body != null ? jsonEncode(body) : null)
+              .timeout(_timeout);
           break;
         default:
           response = await http.get(uri, headers: headers).timeout(_timeout);
@@ -848,6 +852,87 @@ class HippoAuthService {
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
   }
 
+  Future<void> bulkDeleteLeads(List<dynamic> ids, String pipeline) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final tab = int.tryParse(_pipelineTabMap[pipeline] ?? '4') ?? 4;
+    final res = await authenticatedRequest(
+      '/lead/bulk',
+      method: 'DELETE',
+      body: {'ids': ids, 'tab': tab, 'companyid': companyId},
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> bulkAssignLeads(List<dynamic> ids, String assignedTo) async {
+    final res = await authenticatedRequest(
+      '/lead/assignment',
+      method: 'PUT',
+      body: {'ids': ids, 'assignedTo': assignedTo},
+    );
+    if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  // Converts a snake_case import row to the camelCase payload the backend
+  // expects — matching exactly what the single-lead add form sends.
+  static Map<String, dynamic> _toLeadPayload(Map<String, dynamic> row) {
+    String? val(String key) {
+      final v = row[key]?.toString().trim() ?? '';
+      return v.isEmpty ? null : v;
+    }
+
+    return {
+      if (val('lead_name') != null) 'leadName': val('lead_name'),
+      if (val('full_name') != null) 'fullName': val('full_name'),
+      if (val('email') != null) 'email': val('email'),
+      if (val('phone') != null) 'phone': val('phone'),
+      if (val('alternate_number') != null) 'alternateNumber': val('alternate_number'),
+      if (val('address') != null) 'address': val('address'),
+      if (val('city') != null) 'city': val('city'),
+      if (val('state') != null) 'state': val('state'),
+      if (val('zip_code') != null) 'zipCode': val('zip_code'),
+      if (val('country') != null) 'country': val('country'),
+      if (val('source_type') != null) 'sourceType': val('source_type'),
+      if (val('source_channel') != null) 'sourceChannel': val('source_channel'),
+      if (val('interest_level') != null) 'interestLevel': val('interest_level'),
+      if (val('lead_stage') != null) 'leadStage': val('lead_stage'),
+      if (val('category') != null) 'category': val('category'),
+      if (val('assigned_to') != null) 'assignedTo': val('assigned_to'),
+      if (val('assigned_on') != null) 'assignedOn': val('assigned_on'),
+      if (val('notes') != null) 'notes': val('notes'),
+    };
+  }
+
+  Future<Map<String, dynamic>> bulkImportLeads(
+      List<Map<String, dynamic>> leads) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final payload = leads.map(_toLeadPayload).toList();
+    final res = await authenticatedRequest(
+      '/lead',
+      method: 'POST',
+      body: {'action': 'bulk', 'companyid': companyId, 'leads': payload},
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      // Show the actual server message, not the generic fallback.
+      String errMsg;
+      try {
+        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+        errMsg = decoded['message']?.toString() ??
+            decoded['error']?.toString() ??
+            'HTTP ${res.statusCode}: ${res.body}';
+      } catch (_) {
+        errMsg = res.body.isNotEmpty
+            ? 'HTTP ${res.statusCode}: ${res.body}'
+            : 'HTTP ${res.statusCode}';
+      }
+      throw Exception(errMsg);
+    }
+    final decoded = jsonDecode(res.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return {'message': 'Import successful'};
+  }
+
   // keep for followups tab
   Future<List<Map<String, dynamic>>> getLeads(
       {String pipeline = 'pipeline'}) async {
@@ -1251,6 +1336,66 @@ class HippoAuthService {
       queryParams: {'id': id.toString(), 'tab': tab},
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  // Converts snake_case import row to the camelCase payload /client/bulk expects.
+  static Map<String, dynamic> _toClientPayload(Map<String, dynamic> row) {
+    String? val(String key) {
+      final v = row[key]?.toString().trim() ?? '';
+      return v.isEmpty ? null : v;
+    }
+
+    return {
+      if (val('client_name') != null) 'clientName': val('client_name'),
+      if (val('contact_person') != null) 'contactPerson': val('contact_person'),
+      if (val('email') != null) 'email': val('email'),
+      if (val('phone') != null) 'phone': val('phone'),
+      if (val('alternate_contact') != null) 'alternateContact': val('alternate_contact'),
+      if (val('tax_id') != null) 'taxId': val('tax_id'),
+      if (val('street_address') != null) 'streetAddress': val('street_address'),
+      if (val('city') != null) 'city': val('city'),
+      if (val('state') != null) 'state': val('state'),
+      if (val('postal_code') != null) 'postalCode': val('postal_code'),
+      if (val('country') != null) 'country': val('country'),
+      if (val('notes') != null) 'notes': val('notes'),
+      if (val('negotiate') != null) 'negotiate': val('negotiate'),
+      if (val('tax_option') != null) 'taxOption': val('tax_option'),
+      if (val('round_off') != null) 'roundOff': val('round_off'),
+      if (val('payment_terms') != null) 'paymentTerms': val('payment_terms'),
+      if (val('preferred_payment') != null) 'preferredPayment': val('preferred_payment'),
+      if (val('services') != null) 'services': val('services'),
+      if (val('start_dates') != null) 'startDates': val('start_dates'),
+      if (val('required_durations') != null) 'requiredDurations': val('required_durations'),
+    };
+  }
+
+  Future<Map<String, dynamic>> bulkImportClients(
+      List<Map<String, dynamic>> clients) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    final payload = clients.map(_toClientPayload).toList();
+    final res = await authenticatedRequest(
+      '/client/bulk',
+      method: 'POST',
+      body: {'companyid': companyId, 'clients': payload},
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      String errMsg;
+      try {
+        final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+        errMsg = decoded['message']?.toString() ??
+            decoded['error']?.toString() ??
+            'HTTP ${res.statusCode}: ${res.body}';
+      } catch (_) {
+        errMsg = res.body.isNotEmpty
+            ? 'HTTP ${res.statusCode}: ${res.body}'
+            : 'HTTP ${res.statusCode}';
+      }
+      throw Exception(errMsg);
+    }
+    final decoded = jsonDecode(res.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return {'message': 'Import successful'};
   }
 
   // ── Sales & Billing (/sale) ───────────────────────────────────────────────────
