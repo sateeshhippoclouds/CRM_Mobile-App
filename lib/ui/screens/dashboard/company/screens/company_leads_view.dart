@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -5176,24 +5177,36 @@ class _FollowupActionsDialogState extends State<_FollowupActionsDialog> {
     );
   }
 
+  static bool _busy = false;
+
   static void _previewPdf(ScaffoldMessengerState sm,
       Map<String, dynamic> item, bool showBreakdown) async {
+    if (_busy) return;
+    _busy = true;
+    SmartDialog.showLoading(msg: 'Generating PDF…');
     try {
       final bytes = await _FollowupPdfGenerator.generate(item,
           showBreakdown: showBreakdown);
+      SmartDialog.dismiss();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'Quote - ${item['lead_name'] ?? 'PDF'}',
       );
     } catch (e) {
+      SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('PDF preview error: $e'),
           backgroundColor: const Color(0xffDC2626)));
+    } finally {
+      _busy = false;
     }
   }
 
   static void _downloadPdf(ScaffoldMessengerState sm,
       Map<String, dynamic> item, bool showBreakdown) async {
+    if (_busy) return;
+    _busy = true;
+    SmartDialog.showLoading(msg: 'Preparing PDF…');
     try {
       final bytes = await _FollowupPdfGenerator.generate(item,
           showBreakdown: showBreakdown);
@@ -5202,11 +5215,15 @@ class _FollowupActionsDialogState extends State<_FollowupActionsDialog> {
           (item['lead_name']?.toString() ?? 'quote').replaceAll(' ', '_');
       final file = File('${dir.path}/quote_$leadName.pdf');
       await file.writeAsBytes(bytes);
+      SmartDialog.dismiss();
       await Share.shareXFiles([XFile(file.path)], text: 'Quote PDF');
     } catch (e) {
+      SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('Download error: $e'),
           backgroundColor: const Color(0xffDC2626)));
+    } finally {
+      _busy = false;
     }
   }
 }

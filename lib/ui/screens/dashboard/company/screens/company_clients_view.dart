@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -2691,14 +2692,14 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
                         'VIEW PDF',
                         const Color(0xff7C3AED),
                         const Color(0xffF5F3FF),
-                        onTap: () => _previewPdf(context, sub, services),
+                        onTap: () => _previewPdf(sub, services),
                       ),
                       _actionBtn(
                         Icons.download_outlined,
                         'DOWNLOAD PDF',
                         const Color(0xff2563EB),
                         const Color(0xffEFF6FF),
-                        onTap: () => _downloadPdf(context, sub, services),
+                        onTap: () => _downloadPdf(sub, services),
                       ),
                       _actionBtn(
                         Icons.email_outlined,
@@ -2747,26 +2748,38 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
         ),
       );
 
-  void _previewPdf(BuildContext ctx, Map<String, dynamic> sub,
+  bool _pdfBusy = false;
+
+  void _previewPdf(Map<String, dynamic> sub,
       List<Map<String, dynamic>> services) async {
-    final sm = ScaffoldMessenger.of(ctx);
+    if (_pdfBusy) return;
+    _pdfBusy = true;
+    SmartDialog.showLoading(msg: 'Generating PDF…');
     try {
       final bytes = await _ClientInvoicePdfGenerator.generate(
           widget.item, _data?['client'] as Map<String, dynamic>? ?? widget.item, sub, services);
+      SmartDialog.dismiss();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'Invoice - ${widget.item['client_name'] ?? 'PDF'}',
       );
     } catch (e) {
-      sm.showSnackBar(SnackBar(
-          content: Text('PDF preview error: $e'),
-          backgroundColor: const Color(0xffDC2626)));
+      SmartDialog.dismiss();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('PDF preview error: $e'),
+            backgroundColor: const Color(0xffDC2626)));
+      }
+    } finally {
+      _pdfBusy = false;
     }
   }
 
-  void _downloadPdf(BuildContext ctx, Map<String, dynamic> sub,
+  void _downloadPdf(Map<String, dynamic> sub,
       List<Map<String, dynamic>> services) async {
-    final sm = ScaffoldMessenger.of(ctx);
+    if (_pdfBusy) return;
+    _pdfBusy = true;
+    SmartDialog.showLoading(msg: 'Preparing PDF…');
     try {
       final bytes = await _ClientInvoicePdfGenerator.generate(
           widget.item, _data?['client'] as Map<String, dynamic>? ?? widget.item, sub, services);
@@ -2775,11 +2788,17 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
           .replaceAll(' ', '_');
       final file = File('${dir.path}/invoice_$name.pdf');
       await file.writeAsBytes(bytes);
+      SmartDialog.dismiss();
       await Share.shareXFiles([XFile(file.path)], text: 'Invoice PDF');
     } catch (e) {
-      sm.showSnackBar(SnackBar(
-          content: Text('Download error: $e'),
-          backgroundColor: const Color(0xffDC2626)));
+      SmartDialog.dismiss();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Download error: $e'),
+            backgroundColor: const Color(0xffDC2626)));
+      }
+    } finally {
+      _pdfBusy = false;
     }
   }
 
@@ -3388,26 +3407,38 @@ class _ClientActionsDialog extends StatelessWidget {
     }
   }
 
+  static bool _busy = false;
+
   void _preview(BuildContext context) async {
+    if (_busy) return;
+    _busy = true;
     final sm = ScaffoldMessenger.of(context);
     Navigator.pop(context);
+    SmartDialog.showLoading(msg: 'Generating PDF…');
     try {
       final bytes = await _ClientInvoicePdfGenerator.generate(
           item, item, item, _services());
+      SmartDialog.dismiss();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'Invoice - ${item['client_name'] ?? 'PDF'}',
       );
     } catch (e) {
+      SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('PDF error: $e'),
           backgroundColor: const Color(0xffDC2626)));
+    } finally {
+      _busy = false;
     }
   }
 
   void _download(BuildContext context) async {
+    if (_busy) return;
+    _busy = true;
     final sm = ScaffoldMessenger.of(context);
     Navigator.pop(context);
+    SmartDialog.showLoading(msg: 'Preparing PDF…');
     try {
       final bytes = await _ClientInvoicePdfGenerator.generate(
           item, item, item, _services());
@@ -3416,11 +3447,15 @@ class _ClientActionsDialog extends StatelessWidget {
           .replaceAll(' ', '_');
       final file = File('${dir.path}/invoice_$name.pdf');
       await file.writeAsBytes(bytes);
+      SmartDialog.dismiss();
       await Share.shareXFiles([XFile(file.path)], text: 'Invoice PDF');
     } catch (e) {
+      SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('Download error: $e'),
           backgroundColor: const Color(0xffDC2626)));
+    } finally {
+      _busy = false;
     }
   }
 
