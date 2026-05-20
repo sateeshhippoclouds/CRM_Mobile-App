@@ -7,6 +7,9 @@ import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:stacked/stacked.dart';
 import 'package:xml/xml.dart';
@@ -899,57 +902,71 @@ class _DataRow extends StatelessWidget {
       return SizedBox(
         width: col.width,
         height: 52,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (phone.isNotEmpty && !isDraft) ...[
-              CallButton(
-                phoneNumber: phone,
-                contactName: clientName,
-                contactId: clientId,
-                contactType: 'client',
-                size: 30,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (phone.isNotEmpty && !isDraft) ...[
+                CallButton(
+                  phoneNumber: phone,
+                  contactName: clientName,
+                  contactId: clientId,
+                  contactType: 'client',
+                  size: 30,
+                ),
+                const SizedBox(width: 2),
+              ],
+              if (canUpdate && !isDraft)
+                _Btn(
+                    icon: Icons.edit_outlined,
+                    color: kCrmBlue,
+                    onTap: onEdit),
+              if (canDelete) ...[
+                const SizedBox(width: 2),
+                _Btn(
+                    icon: Icons.delete_outline,
+                    color: const Color(0xffDC2626),
+                    onTap: onDelete),
+              ],
+              if (isNonActive && !isDraft) ...[
+                const SizedBox(width: 2),
+                _Btn(
+                  icon: Icons.refresh_rounded,
+                  color: const Color(0xff16A34A),
+                  onTap: onReactivate,
+                  tooltip: 'Reactivate',
+                ),
+              ],
+              if (isDraft && canUpdate) ...[
+                const SizedBox(width: 2),
+                _Btn(
+                  icon: Icons.refresh_rounded,
+                  color: const Color(0xff16A34A),
+                  onTap: onReactivate,
+                  tooltip: 'Convert to Client',
+                ),
+              ],
+              const SizedBox(width: 2),
+              Builder(builder: (ctx) => _Btn(
+                icon: Icons.more_vert,
+                color: const Color(0xff6B7280),
+                onTap: () => showDialog(
+                  context: ctx,
+                  builder: (_) => _ClientActionsDialog(item: item),
+                ),
+                tooltip: 'More Actions',
+              )),
+              const SizedBox(width: 2),
+              _Btn(
+                icon: Icons.remove_red_eye_outlined,
+                color: const Color(0xff7C3AED),
+                onTap: onViewHistory,
+                tooltip: 'View History',
               ),
-              const SizedBox(width: 2),
             ],
-            if (canUpdate && !isDraft)
-              _Btn(
-                  icon: Icons.edit_outlined,
-                  color: kCrmBlue,
-                  onTap: onEdit),
-            if (canDelete) ...[
-              const SizedBox(width: 2),
-              _Btn(
-                  icon: Icons.delete_outline,
-                  color: const Color(0xffDC2626),
-                  onTap: onDelete),
-            ],
-            if (isNonActive && !isDraft) ...[
-              const SizedBox(width: 2),
-              _Btn(
-                icon: Icons.refresh_rounded,
-                color: const Color(0xff16A34A),
-                onTap: onReactivate,
-                tooltip: 'Reactivate',
-              ),
-            ],
-            if (isDraft && canUpdate) ...[
-              const SizedBox(width: 2),
-              _Btn(
-                icon: Icons.refresh_rounded,
-                color: const Color(0xff16A34A),
-                onTap: onReactivate,
-                tooltip: 'Convert to Client',
-              ),
-            ],
-            const SizedBox(width: 2),
-            _Btn(
-              icon: Icons.remove_red_eye_outlined,
-              color: const Color(0xff7C3AED),
-              onTap: onViewHistory,
-              tooltip: 'View History',
-            ),
-          ],
+          ),
         ),
       );
     }
@@ -965,9 +982,7 @@ class _DataRow extends StatelessWidget {
               svc['svc_name']?.toString() ??
               '—';
         } else if (col.key == 'svc_duration') {
-          val = svc['opted_duration']?.toString() ??
-              svc['duration']?.toString() ??
-              '—';
+          val = svc['original_duration']?.toString() ?? '—';
         } else if (col.key == 'svc_base_price') {
           val = svc['base_price']?.toString() ?? '—';
         } else if (col.key == 'svc_tax') {
@@ -980,7 +995,9 @@ class _DataRow extends StatelessWidget {
         } else if (col.key == 'svc_end_date') {
           val = CompanyClientsViewModel.fmtDate(svc['end_date']);
         } else if (col.key == 'svc_req_duration') {
-          val = svc['original_duration']?.toString() ?? '—';
+          val = svc['opted_duration']?.toString() ??
+              svc['duration']?.toString() ??
+              '—';
         }
       }
       return _C(
@@ -2669,12 +2686,35 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
                     spacing: 8,
                     runSpacing: 6,
                     children: [
-                      _actionBtn(Icons.remove_red_eye_outlined, 'VIEW PDF',
-                          const Color(0xff7C3AED), const Color(0xffF5F3FF)),
-                      _actionBtn(Icons.download_outlined, 'DOWNLOAD PDF',
-                          const Color(0xff2563EB), const Color(0xffEFF6FF)),
-                      _actionBtn(Icons.email_outlined, 'SEND MAIL',
-                          const Color(0xff0D9488), const Color(0xffF0FDFA)),
+                      _actionBtn(
+                        Icons.remove_red_eye_outlined,
+                        'VIEW PDF',
+                        const Color(0xff7C3AED),
+                        const Color(0xffF5F3FF),
+                        onTap: () => _previewPdf(context, sub, services),
+                      ),
+                      _actionBtn(
+                        Icons.download_outlined,
+                        'DOWNLOAD PDF',
+                        const Color(0xff2563EB),
+                        const Color(0xffEFF6FF),
+                        onTap: () => _downloadPdf(context, sub, services),
+                      ),
+                      _actionBtn(
+                        Icons.email_outlined,
+                        'SEND MAIL',
+                        const Color(0xff0D9488),
+                        const Color(0xffF0FDFA),
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (_) => _ClientComposeEmailDialog(
+                            item: widget.item,
+                            clientData: _data?['client'] as Map<String, dynamic>? ?? widget.item,
+                            sub: sub,
+                            services: services,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -2686,9 +2726,10 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
   }
 
   static Widget _actionBtn(
-          IconData icon, String label, Color color, Color bg) =>
+          IconData icon, String label, Color color, Color bg,
+          {VoidCallback? onTap}) =>
       OutlinedButton.icon(
-        onPressed: () {},
+        onPressed: onTap ?? () {},
         icon: Icon(icon, size: 14, color: color),
         label: Text(label,
             style: TextStyle(
@@ -2705,6 +2746,42 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
       );
+
+  void _previewPdf(BuildContext ctx, Map<String, dynamic> sub,
+      List<Map<String, dynamic>> services) async {
+    final sm = ScaffoldMessenger.of(ctx);
+    try {
+      final bytes = await _ClientInvoicePdfGenerator.generate(
+          widget.item, _data?['client'] as Map<String, dynamic>? ?? widget.item, sub, services);
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: 'Invoice - ${widget.item['client_name'] ?? 'PDF'}',
+      );
+    } catch (e) {
+      sm.showSnackBar(SnackBar(
+          content: Text('PDF preview error: $e'),
+          backgroundColor: const Color(0xffDC2626)));
+    }
+  }
+
+  void _downloadPdf(BuildContext ctx, Map<String, dynamic> sub,
+      List<Map<String, dynamic>> services) async {
+    final sm = ScaffoldMessenger.of(ctx);
+    try {
+      final bytes = await _ClientInvoicePdfGenerator.generate(
+          widget.item, _data?['client'] as Map<String, dynamic>? ?? widget.item, sub, services);
+      final dir = await getTemporaryDirectory();
+      final name = (widget.item['client_name']?.toString() ?? 'invoice')
+          .replaceAll(' ', '_');
+      final file = File('${dir.path}/invoice_$name.pdf');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: 'Invoice PDF');
+    } catch (e) {
+      sm.showSnackBar(SnackBar(
+          content: Text('Download error: $e'),
+          backgroundColor: const Color(0xffDC2626)));
+    }
+  }
 
   Widget _summaryBox(String label, String value, Color color) => Container(
         width: 120,
@@ -3243,6 +3320,842 @@ class _ClientBulkImportDialogState extends State<_ClientBulkImportDialog> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Reusable circular action button ─────────────────────────────────────────
+
+class _ActionBtn extends StatelessWidget {
+  const _ActionBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.bgColor,
+    this.circular = false,
+  });
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final Color? bgColor;
+  final bool circular;
+
+  @override
+  Widget build(BuildContext context) {
+    if (circular) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(50),
+        child: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: bgColor ?? color.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+      );
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(icon, size: 16, color: color),
+      ),
+    );
+  }
+}
+
+// ─── Client Actions Dialog (3-dot menu) ──────────────────────────────────────
+
+class _ClientActionsDialog extends StatelessWidget {
+  const _ClientActionsDialog({required this.item});
+  final Map<String, dynamic> item;
+
+  List<Map<String, dynamic>> _services() {
+    try {
+      final raw = item['services'];
+      if (raw == null) return [];
+      final list = raw is List ? raw : jsonDecode(raw.toString()) as List;
+      return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _preview(BuildContext context) async {
+    final sm = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    try {
+      final bytes = await _ClientInvoicePdfGenerator.generate(
+          item, item, item, _services());
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: 'Invoice - ${item['client_name'] ?? 'PDF'}',
+      );
+    } catch (e) {
+      sm.showSnackBar(SnackBar(
+          content: Text('PDF error: $e'),
+          backgroundColor: const Color(0xffDC2626)));
+    }
+  }
+
+  void _download(BuildContext context) async {
+    final sm = ScaffoldMessenger.of(context);
+    Navigator.pop(context);
+    try {
+      final bytes = await _ClientInvoicePdfGenerator.generate(
+          item, item, item, _services());
+      final dir = await getTemporaryDirectory();
+      final name = (item['client_name']?.toString() ?? 'invoice')
+          .replaceAll(' ', '_');
+      final file = File('${dir.path}/invoice_$name.pdf');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: 'Invoice PDF');
+    } catch (e) {
+      sm.showSnackBar(SnackBar(
+          content: Text('Download error: $e'),
+          backgroundColor: const Color(0xffDC2626)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('What would you like to do?',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff111827))),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                _ActionBtn(
+                  icon: Icons.email_outlined,
+                  color: const Color(0xff2563EB),
+                  circular: true,
+                  onTap: () {
+                    Navigator.pop(context);
+                    showDialog(
+                      context: context,
+                      builder: (_) => _ClientComposeEmailDialog(
+                        item: item,
+                        clientData: item,
+                        sub: item,
+                        services: _services(),
+                      ),
+                    );
+                  },
+                ),
+                _ActionBtn(
+                  icon: Icons.remove_red_eye_outlined,
+                  color: const Color(0xff0891B2),
+                  circular: true,
+                  onTap: () => _preview(context),
+                ),
+                _ActionBtn(
+                  icon: Icons.download_outlined,
+                  color: const Color(0xff0891B2),
+                  circular: true,
+                  onTap: () => _download(context),
+                ),
+                _ActionBtn(
+                  icon: Icons.close,
+                  color: const Color(0xffEF4444),
+                  bgColor: const Color(0xffFEF2F2),
+                  circular: true,
+                  onTap: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Client Invoice PDF Generator ─────────────────────────────────────────────
+
+class _ClientInvoicePdfGenerator {
+  static Future<Uint8List> generate(
+    Map<String, dynamic> listItem,
+    Map<String, dynamic> clientData,
+    Map<String, dynamic> sub,
+    List<Map<String, dynamic>> services,
+  ) async {
+    final api = locator<HippoAuthService>();
+    Map<String, dynamic> header = {};
+    String userName = '';
+    try {
+      final settings = await api.getCompanySettingsForPdf();
+      header = settings['header'] as Map<String, dynamic>? ?? {};
+      userName = settings['userName']?.toString() ?? '';
+    } catch (_) {}
+
+    pw.ImageProvider? letterheadImage;
+    try {
+      final lhUrl = header['letterhead']?.toString() ?? '';
+      if (lhUrl.isNotEmpty) letterheadImage = await networkImage(lhUrl);
+    } catch (_) {}
+
+    pw.ImageProvider? logoImage;
+    try {
+      final logoUrl = header['logo']?.toString() ?? '';
+      if (logoUrl.isNotEmpty) logoImage = await networkImage(logoUrl);
+    } catch (_) {}
+
+    pw.ImageProvider? digisignImage;
+    try {
+      final dsUrl = header['digisign']?.toString() ?? '';
+      if (dsUrl.isNotEmpty) digisignImage = await networkImage(dsUrl);
+    } catch (_) {}
+
+    final ttf = await PdfGoogleFonts.notoSansRegular();
+    final ttfBold = await PdfGoogleFonts.notoSansBold();
+
+    // ── Client info ───────────────────────────────────────────────────────────
+    final clientName = clientData['client_name']?.toString() ??
+        listItem['client_name']?.toString() ?? '—';
+    final contact = clientData['contact_person']?.toString() ??
+        listItem['contact_person']?.toString() ?? '—';
+    final email = clientData['email']?.toString() ??
+        listItem['email']?.toString() ?? '—';
+    final phone = clientData['phone']?.toString() ??
+        listItem['phone']?.toString() ?? '—';
+    final assignedTo = clientData['employee_name']?.toString().trim().isNotEmpty == true
+        ? clientData['employee_name'].toString().trim()
+        : clientData['assigned_to_name']?.toString().trim().isNotEmpty == true
+            ? clientData['assigned_to_name'].toString().trim()
+            : listItem['assigned_to']?.toString().trim().isNotEmpty == true
+                ? listItem['assigned_to'].toString().trim()
+                : '—';
+    final clientStatus = (listItem['status']?.toString() ?? '').toUpperCase();
+
+    // ── Term info ─────────────────────────────────────────────────────────────
+    final termNum = sub['term_number']?.toString() ?? '1';
+    final subId = sub['subscription_id']?.toString() ??
+        sub['current_subscription_id']?.toString() ??
+        sub['id']?.toString() ?? '—';
+    final subStatus = (sub['status']?.toString() ?? '').toUpperCase();
+    final discount = sub['discount']?.toString() ?? '0.00';
+    final taxOption = sub['tax_option']?.toString() ?? '—';
+    final negotiate = sub['negotiate']?.toString() ?? '—';
+    final roundOff = double.tryParse(sub['round_off']?.toString() ?? '0') ?? 0;
+    final periodStart = _fmtDate(sub['start_date'] ??
+        (services.isNotEmpty ? services.first['start_date'] : null));
+    final periodEnd = _fmtDate(sub['end_date'] ??
+        (services.isNotEmpty ? services.first['end_date'] : null));
+
+    // ── Financials ────────────────────────────────────────────────────────────
+    final origTotal = double.tryParse(sub['original_total_amount']?.toString() ?? '') ?? 0;
+    final origTax = double.tryParse(sub['original_tax_amount']?.toString() ?? '') ?? 0;
+    final revisedTotal = double.tryParse(sub['revised_total_amount']?.toString() ?? '') ?? 0;
+    final totalPaid = double.tryParse(sub['total_paid']?.toString() ?? '0') ?? 0;
+    final carriedOver = double.tryParse(sub['carried_over_balance']?.toString() ?? '0') ?? 0;
+    final toCollect = double.tryParse(sub['to_collect']?.toString() ?? '') ?? (revisedTotal + carriedOver);
+    final balanceDue = toCollect - totalPaid;
+
+    // ── Generated date/time ───────────────────────────────────────────────────
+    final now = DateTime.now();
+    final genStr =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}'
+        ' ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    // ── Page theme (letterhead as full-page background) ───────────────────────
+    final pageTheme = letterheadImage != null
+        ? pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.fromLTRB(28, 130, 28, 55),
+            buildBackground: (pw.Context context) => pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Image(letterheadImage!,
+                  fit: pw.BoxFit.fill,
+                  width: PdfPageFormat.a4.width,
+                  height: PdfPageFormat.a4.height),
+            ),
+          )
+        : pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.fromLTRB(28, 20, 28, 20),
+          );
+
+    final doc = pw.Document();
+    doc.addPage(pw.MultiPage(
+      pageTheme: pageTheme,
+      build: (pw.Context ctx) {
+        final widgets = <pw.Widget>[];
+
+        // ── Programmatic header (no letterhead) ──────────────────────────────
+        if (letterheadImage == null) {
+          widgets.add(pw.Column(children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                logoImage != null
+                    ? pw.Image(logoImage, width: 130, height: 50, fit: pw.BoxFit.contain)
+                    : pw.Text(userName,
+                        style: pw.TextStyle(font: ttfBold, fontSize: 18,
+                            color: const PdfColor.fromInt(0xFF1E3A8A))),
+                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                  if ((header['phone']?.toString() ?? '').isNotEmpty)
+                    pw.Text('☎ ${header['phone']}',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  if ((header['email']?.toString() ?? '').isNotEmpty)
+                    pw.Text('✉ ${header['email']}',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  if ((header['website']?.toString() ?? '').isNotEmpty)
+                    pw.Text('⊕ ${header['website']}',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                ]),
+              ],
+            ),
+            pw.Divider(thickness: 0.8, color: PdfColors.grey400),
+            pw.SizedBox(height: 6),
+          ]));
+        }
+
+        // ── Title ─────────────────────────────────────────────────────────────
+        widgets.add(pw.Center(
+          child: pw.Text('Subscription Statement — Term $termNum',
+              style: pw.TextStyle(font: ttfBold, fontSize: 15,
+                  color: const PdfColor.fromInt(0xFF1E3A8A))),
+        ));
+        widgets.add(pw.SizedBox(height: 12));
+
+        // ── Client Information ─────────────────────────────────────────────────
+        widgets.add(_sectionHeader('Client Information', ttfBold));
+        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(_infoGrid([
+          ['Client Name', clientName],
+          ['Contact Person', contact],
+          ['Email', email],
+          ['Phone', phone],
+          ['Assigned To', assignedTo],
+          ['Status', clientStatus],
+        ], ttf, ttfBold));
+        widgets.add(pw.SizedBox(height: 4));
+        widgets.add(pw.Text('Generated: $genStr',
+            style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600)));
+        widgets.add(pw.SizedBox(height: 12));
+
+        // ── Term Overview ──────────────────────────────────────────────────────
+        widgets.add(_sectionHeader('Term $termNum Overview', ttfBold));
+        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(_infoGrid([
+          ['Subscription ID', '#$subId'],
+          ['Term Number', 'Term $termNum'],
+          ['Status', subStatus],
+          ['Period', '$periodStart - $periodEnd'],
+          ['Discount', '$discount%'],
+          ['Tax Option', taxOption],
+          ['Negotiate', negotiate],
+          ['Round Off', roundOff.toStringAsFixed(2)],
+        ], ttf, ttfBold));
+        widgets.add(pw.SizedBox(height: 12));
+
+        // ── Services Breakdown ─────────────────────────────────────────────────
+        widgets.add(_sectionHeader('Services Breakdown', ttfBold));
+        widgets.add(pw.SizedBox(height: 6));
+
+        const svcCols = <int, pw.TableColumnWidth>{
+          0: pw.FixedColumnWidth(22),
+          1: pw.FlexColumnWidth(3),
+          2: pw.FlexColumnWidth(2),
+          3: pw.FlexColumnWidth(2),
+          4: pw.FlexColumnWidth(1.5),
+          5: pw.FlexColumnWidth(2),
+        };
+
+        // Header row
+        final svcRows = <pw.TableRow>[
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF3F4F6)),
+            children: [
+              _tc('#', ttfBold, isHeader: true, align: pw.TextAlign.center),
+              _tc('Service', ttfBold, isHeader: true),
+              _tc('Duration', ttfBold, isHeader: true, align: pw.TextAlign.center),
+              _tc('Base', ttfBold, isHeader: true, align: pw.TextAlign.right),
+              _tc('Tax %', ttfBold, isHeader: true, align: pw.TextAlign.center),
+              _tc('Total', ttfBold, isHeader: true, align: pw.TextAlign.right),
+            ],
+          ),
+        ];
+
+        double svcOrigSubtotal = 0;
+        for (var i = 0; i < services.length; i++) {
+          final svc = services[i];
+          final svcName = svc['service_name']?.toString() ??
+              svc['product_name']?.toString() ?? '—';
+          final dur = svc['original_duration']?.toString() ??
+              svc['opted_duration']?.toString() ?? svc['duration']?.toString() ?? '—';
+          final base = double.tryParse(svc['base_price']?.toString() ?? '') ?? 0;
+          final taxRate = svc['tax_rate']?.toString() ?? '0';
+          final svcTotal = double.tryParse(svc['total_amount']?.toString() ?? '') ?? 0;
+          svcOrigSubtotal += svcTotal;
+          svcRows.add(pw.TableRow(children: [
+            _tc('${i + 1}', ttf, align: pw.TextAlign.center),
+            _tc(svcName, ttf),
+            _tc('$dur mo', ttf, align: pw.TextAlign.center),
+            _tc(base.toStringAsFixed(2), ttf, align: pw.TextAlign.right),
+            _tc('$taxRate%', ttf, align: pw.TextAlign.center),
+            _tc(svcTotal.toStringAsFixed(2), ttf, align: pw.TextAlign.right),
+          ]));
+        }
+
+        widgets.add(pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: svcCols,
+          children: svcRows,
+        ));
+
+        // Subtotals
+        final subtotalActual = origTotal > 0 ? origTotal : svcOrigSubtotal;
+        final taxLabel = taxOption.toLowerCase() == 'excluding'
+            ? 'Tax (Tax Exclusive)'
+            : 'Tax (Tax Inclusive)';
+        widgets.add(_subtotalRow('Subtotal (Original):', subtotalActual.toStringAsFixed(2), ttf));
+        widgets.add(_subtotalRow('$taxLabel:', origTax.toStringAsFixed(2), ttf));
+        if (roundOff != 0) {
+          widgets.add(_subtotalRow('Round Off:', roundOff.toStringAsFixed(2), ttf));
+        }
+        widgets.add(_subtotalRow('Revised Total:', revisedTotal.toStringAsFixed(2), ttfBold, bold: true));
+        if (carriedOver > 0) {
+          widgets.add(_subtotalRow('Previous Balance:', carriedOver.toStringAsFixed(2), ttf));
+          widgets.add(_subtotalRow('Amount to Collect:', toCollect.toStringAsFixed(2), ttfBold, bold: true));
+        }
+        widgets.add(pw.SizedBox(height: 12));
+
+        // ── Payment History ────────────────────────────────────────────────────
+        widgets.add(_sectionHeader('Payment History', ttfBold));
+        widgets.add(pw.SizedBox(height: 6));
+        final payments = <Map<String, dynamic>>[];
+        try {
+          final raw = sub['payments'];
+          if (raw is List && raw.isNotEmpty) {
+            payments.addAll(raw.map((e) => Map<String, dynamic>.from(e as Map)));
+          }
+        } catch (_) {}
+        if (payments.isEmpty) {
+          widgets.add(pw.Text('No payments recorded for this term.',
+              style: pw.TextStyle(font: ttf, fontSize: 9,
+                  fontStyle: pw.FontStyle.italic, color: PdfColors.grey600)));
+        } else {
+          final payRows = <pw.TableRow>[
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF3F4F6)),
+              children: [
+                _tc('Date', ttfBold, isHeader: true),
+                _tc('Amount', ttfBold, isHeader: true, align: pw.TextAlign.right),
+                _tc('Mode', ttfBold, isHeader: true),
+                _tc('Reference', ttfBold, isHeader: true),
+              ],
+            ),
+            ...payments.map((p) => pw.TableRow(children: [
+              _tc(_fmtDate(p['payment_date'] ?? p['date'] ?? p['created_at']), ttf),
+              _tc((double.tryParse(p['amount']?.toString() ?? '0') ?? 0).toStringAsFixed(2),
+                  ttf, align: pw.TextAlign.right),
+              _tc(p['payment_mode']?.toString() ?? p['mode']?.toString() ?? '—', ttf),
+              _tc(p['reference']?.toString() ?? p['transaction_id']?.toString() ?? '—', ttf),
+            ])),
+          ];
+          widgets.add(pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(2),
+              1: pw.FlexColumnWidth(1.5),
+              2: pw.FlexColumnWidth(1.5),
+              3: pw.FlexColumnWidth(2),
+            },
+            children: payRows,
+          ));
+        }
+        widgets.add(pw.SizedBox(height: 12));
+
+        // ── Financial Summary ─────────────────────────────────────────────────
+        widgets.add(_sectionHeader('Financial Summary', ttfBold));
+        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(_financialRow('Agreed Amount (Revised Total):', revisedTotal.toStringAsFixed(2), ttf, ttfBold));
+        if (carriedOver > 0) {
+          widgets.add(_financialRow('Balance Carried from Previous Term:', carriedOver.toStringAsFixed(2), ttf, ttfBold));
+          widgets.add(_financialRow('Total to Collect:', toCollect.toStringAsFixed(2), ttf, ttfBold));
+        }
+        widgets.add(_financialRow('Total Paid:', totalPaid.toStringAsFixed(2), ttf, ttfBold));
+        widgets.add(_financialRow('Balance Due:', balanceDue.toStringAsFixed(2), ttf, ttfBold, highlight: true));
+        widgets.add(pw.SizedBox(height: 16));
+
+        // ── Authorized Signatory ──────────────────────────────────────────────
+        widgets.add(pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
+              if (digisignImage != null)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 4),
+                  child: pw.Image(digisignImage,
+                      width: 80, height: 40, fit: pw.BoxFit.contain),
+                )
+              else
+                pw.SizedBox(height: 28),
+              pw.Text('Authorized Signatory',
+                  style: pw.TextStyle(font: ttf, fontSize: 8,
+                      fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
+              pw.Text(userName,
+                  style: pw.TextStyle(font: ttfBold, fontSize: 9)),
+            ]),
+          ],
+        ));
+
+        return widgets;
+      },
+      footer: (pw.Context ctx) {
+        final footerAddr = header['address']?.toString().isNotEmpty == true
+            ? header['address'].toString()
+            : 'HippoCloud Technologies Pvt. Ltd.';
+        return pw.Container(
+          decoration: const pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300))),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(userName,
+                  style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)),
+              pw.Expanded(
+                child: pw.Text(footerAddr,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)),
+              ),
+              pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}  $genStr',
+                  style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)),
+            ],
+          ),
+        );
+      },
+    ));
+
+    return doc.save();
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  static String _fmtDate(dynamic raw) {
+    if (raw == null) return '—';
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == 'null') return '—';
+    try {
+      final dt = DateTime.parse(s);
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    } catch (_) {}
+    return s;
+  }
+
+  static pw.Widget _sectionHeader(String title, pw.Font ttfBold) =>
+      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text(title,
+            style: pw.TextStyle(
+                font: ttfBold, fontSize: 11, color: PdfColors.black)),
+        pw.Divider(thickness: 0.8, color: PdfColors.grey500),
+      ]);
+
+  static pw.Widget _infoGrid(
+      List<List<String>> rows, pw.Font ttf, pw.Font ttfBold) {
+    final left = <List<String>>[];
+    final right = <List<String>>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i.isEven) { left.add(rows[i]); } else { right.add(rows[i]); }
+    }
+    final maxLen = left.length > right.length ? left.length : right.length;
+    final tableRows = <pw.TableRow>[];
+    for (var i = 0; i < maxLen; i++) {
+      tableRows.add(pw.TableRow(children: [
+        _infoCell(i < left.length ? left[i][0] : '', i < left.length ? left[i][1] : '', ttf, ttfBold),
+        _infoCell(i < right.length ? right[i][0] : '', i < right.length ? right[i][1] : '', ttf, ttfBold),
+      ]));
+    }
+    return pw.Table(
+      columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(1)},
+      children: tableRows,
+    );
+  }
+
+  static pw.Widget _infoCell(
+      String label, String value, pw.Font ttf, pw.Font ttfBold) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+        child: pw.RichText(
+          text: pw.TextSpan(children: [
+            pw.TextSpan(
+                text: label.isNotEmpty ? '$label: ' : '',
+                style: pw.TextStyle(font: ttfBold, fontSize: 9,
+                    color: PdfColors.grey800)),
+            pw.TextSpan(
+                text: value,
+                style: pw.TextStyle(font: ttf, fontSize: 9,
+                    color: PdfColors.grey900)),
+          ]),
+        ),
+      );
+
+  static pw.Widget _tc(String text, pw.Font font,
+      {bool isHeader = false, pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+        child: pw.Text(text,
+            textAlign: align,
+            style: pw.TextStyle(
+                font: font,
+                fontSize: isHeader ? 9 : 8,
+                color: isHeader ? PdfColors.grey800 : PdfColors.grey700)),
+      );
+
+  static pw.Widget _subtotalRow(
+      String label, String value, pw.Font font, {bool bold = false}) =>
+      pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Text(label,
+                style: pw.TextStyle(
+                    font: font, fontSize: bold ? 9 : 8,
+                    color: bold ? PdfColors.grey900 : PdfColors.grey700)),
+            pw.SizedBox(width: 40),
+            pw.SizedBox(
+              width: 80,
+              child: pw.Text(value,
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                      font: font, fontSize: bold ? 9 : 8,
+                      color: bold ? PdfColors.grey900 : PdfColors.grey700)),
+            ),
+          ],
+        ),
+      );
+
+  static pw.Widget _financialRow(
+      String label, String value, pw.Font ttf, pw.Font ttfBold,
+      {bool highlight = false}) =>
+      pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        color: highlight ? const PdfColor.fromInt(0xFFFFF7ED) : PdfColors.white,
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(label,
+                style: pw.TextStyle(
+                    font: highlight ? ttfBold : ttf,
+                    fontSize: highlight ? 10 : 9,
+                    color: highlight
+                        ? const PdfColor.fromInt(0xFFDC2626)
+                        : PdfColors.grey800)),
+            pw.Text(value,
+                style: pw.TextStyle(
+                    font: ttfBold,
+                    fontSize: highlight ? 10 : 9,
+                    color: highlight
+                        ? const PdfColor.fromInt(0xFFDC2626)
+                        : PdfColors.grey900)),
+          ],
+        ),
+      );
+}
+
+// ─── Client Compose Email Dialog ──────────────────────────────────────────────
+
+class _ClientComposeEmailDialog extends StatefulWidget {
+  const _ClientComposeEmailDialog({
+    required this.item,
+    required this.clientData,
+    required this.sub,
+    required this.services,
+  });
+  final Map<String, dynamic> item;
+  final Map<String, dynamic> clientData;
+  final Map<String, dynamic> sub;
+  final List<Map<String, dynamic>> services;
+
+  @override
+  State<_ClientComposeEmailDialog> createState() =>
+      _ClientComposeEmailDialogState();
+}
+
+class _ClientComposeEmailDialogState
+    extends State<_ClientComposeEmailDialog> {
+  final _api = locator<HippoAuthService>();
+  late final TextEditingController _subjectCtrl;
+  late final TextEditingController _bodyCtrl;
+  bool _sending = false;
+  String? _error;
+
+  String get _contactName {
+    final v = widget.clientData['contact_person']?.toString().trim() ??
+        widget.item['contact_person']?.toString().trim() ?? '';
+    if (v.isNotEmpty) return v;
+    return widget.clientData['client_name']?.toString().trim() ??
+        widget.item['client_name']?.toString() ?? 'Sir/Madam';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final clientName = widget.clientData['client_name']?.toString() ??
+        widget.item['client_name']?.toString() ?? '';
+    final termNum = widget.sub['term_number']?.toString() ?? '1';
+    _subjectCtrl = TextEditingController(
+        text: 'Subscription Statement — $clientName Term $termNum');
+    _bodyCtrl = TextEditingController(
+        text: 'Dear ${_contactName},\n\nWe hope this message finds you well. '
+            'Attached are the details for your Payment Details, including services, '
+            'dates, and financial summary.\n\nPlease review the attached PDF for '
+            'complete details. Feel free to reach out if you have any questions or '
+            'require further assistance.\n\nBest regards,\n');
+    _api.getCompanySettingsForPdf().then((s) {
+      if (!mounted) return;
+      final header = s['header'] as Map<String, dynamic>? ?? {};
+      final company = header['name']?.toString().trim().isNotEmpty == true
+          ? header['name'].toString().trim()
+          : header['companyname']?.toString().trim().isNotEmpty == true
+              ? header['companyname'].toString().trim()
+              : s['userName']?.toString().trim() ?? '';
+      if (company.isNotEmpty) {
+        _bodyCtrl.text =
+            'Dear ${_contactName},\n\nWe hope this message finds you well. '
+            'Attached are the details for your Payment Details, including services, '
+            'dates, and financial summary.\n\nPlease review the attached PDF for '
+            'complete details. Feel free to reach out if you have any questions or '
+            'require further assistance.\n\nBest regards,\n$company';
+      }
+    }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _subjectCtrl.dispose();
+    _bodyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final toEmail = widget.clientData['email']?.toString() ??
+        widget.item['email']?.toString() ?? '';
+    if (toEmail.isEmpty) {
+      setState(() => _error = 'No email address found for this client.');
+      return;
+    }
+    setState(() { _sending = true; _error = null; });
+    try {
+      final bytes = await _ClientInvoicePdfGenerator.generate(
+          widget.item, widget.clientData, widget.sub, widget.services);
+      final pdfBase64 = base64Encode(bytes);
+      final clientName = (widget.clientData['client_name']?.toString() ??
+              widget.item['client_name']?.toString() ?? 'invoice')
+          .replaceAll(' ', '_');
+      await _api.sendFollowupEmail(
+        toEmail: toEmail,
+        subject: _subjectCtrl.text.trim(),
+        message: _bodyCtrl.text.trim(),
+        pdfBase64: pdfBase64,
+        fileName: 'invoice_$clientName.pdf',
+        lead: widget.clientData,
+        services: widget.services,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Compose Email',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                      color: kCrmBlue)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _subjectCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Subject',
+                    border: OutlineInputBorder(),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _bodyCtrl,
+                maxLines: 7,
+                decoration: const InputDecoration(
+                    labelText: 'Email Content',
+                    border: OutlineInputBorder(),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                style: const TextStyle(fontSize: 13),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xffDC2626))),
+              ],
+              const SizedBox(height: 16),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                ElevatedButton.icon(
+                  onPressed: _sending ? null : _send,
+                  icon: _sending
+                      ? const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send, size: 16),
+                  label: const Text('SEND EMAIL'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: kCrmBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8))),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, size: 16,
+                      color: Color(0xff6B7280)),
+                  label: const Text('CANCEL',
+                      style: TextStyle(color: Color(0xff6B7280))),
+                  style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8))),
+                ),
+              ]),
+            ],
+          ),
         ),
       ),
     );

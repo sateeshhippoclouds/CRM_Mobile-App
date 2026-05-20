@@ -819,6 +819,38 @@ class HippoAuthService {
     };
   }
 
+  Future<Map<String, dynamic>?> getLeadById(dynamic leadId) async {
+    final companyId = await _getCompanyId();
+    if (companyId == null) return null;
+    final id = leadId.toString();
+    // Try each pipeline tab until we find the lead with the matching id.
+    for (final tab in ['', '0', '1', '2', '3']) {
+      try {
+        final params = <String, String>{
+          'companyid': companyId.toString(),
+          'currentpage': '0',
+          'rowsPerPage': '1000',
+        };
+        if (tab.isNotEmpty) params['tab'] = tab;
+        final res = await authenticatedRequest('/lead', queryParams: params);
+        if (res.statusCode != 200) continue;
+        final decoded = jsonDecode(res.body);
+        if (decoded is! Map) continue;
+        final dataOuter = decoded['data'];
+        if (dataOuter is! List || dataOuter.isEmpty) continue;
+        final rows = dataOuter[0] is List
+            ? dataOuter[0] as List
+            : dataOuter;
+        for (final row in rows) {
+          if (row is Map && row['id']?.toString() == id) {
+            return Map<String, dynamic>.from(row);
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   Future<void> addLead(Map<String, dynamic> data) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
@@ -1028,6 +1060,56 @@ class HippoAuthService {
       queryParams: {'id': id.toString()},
     );
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
+  }
+
+  Future<void> sendFollowupEmail({
+    required String toEmail,
+    required String subject,
+    required String message,
+    required String pdfBase64,
+    required String fileName,
+    required Map<String, dynamic> lead,
+    required List<dynamic> services,
+    List<dynamic>? companydata,
+  }) async {
+    final res = await authenticatedRequest(
+      '/followupinvoices',
+      method: 'POST',
+      body: {
+        'to': toEmail,
+        'subject': subject,
+        'message': message,
+        'pdfBase64': pdfBase64,
+        'fileName': fileName,
+        'lead': lead,
+        'services': services,
+        'companydata': companydata ?? [],
+        'settings': {},
+      },
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_parseMessage(res.body));
+    }
+  }
+
+  Future<Map<String, dynamic>> getCompanySettingsForPdf() async {
+    final results = await Future.wait([
+      getCompanySettings('bank'),
+      getCompanySettings('header'),
+      getStoredUser(),
+    ]);
+    final bank = (results[0] as List<Map<String, dynamic>>).isNotEmpty
+        ? (results[0] as List<Map<String, dynamic>>).first
+        : <String, dynamic>{};
+    final header = (results[1] as List<Map<String, dynamic>>).isNotEmpty
+        ? (results[1] as List<Map<String, dynamic>>).first
+        : <String, dynamic>{};
+    final user = results[2] as TokenResponseModel?;
+    return {
+      'bank': bank,
+      'header': header,
+      'userName': user?.name ?? '',
+    };
   }
 
   // ── Tasks (/task) ─────────────────────────────────────────────────────────────

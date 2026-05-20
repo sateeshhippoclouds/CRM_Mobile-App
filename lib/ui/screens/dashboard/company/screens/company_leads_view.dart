@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:stacked/stacked.dart';
 import 'package:xml/xml.dart';
@@ -1036,14 +1039,37 @@ class _Cell extends StatelessWidget {
 }
 
 class _ActionBtn extends StatelessWidget {
-  const _ActionBtn(
-      {required this.icon, required this.color, required this.onTap});
+  const _ActionBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.bgColor,
+    this.circular = false,
+  });
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
+  final Color? bgColor;
+  final bool circular;
 
   @override
   Widget build(BuildContext context) {
+    if (circular) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(50),
+        child: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: bgColor ?? color.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+      );
+    }
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(4),
@@ -3545,6 +3571,11 @@ class _FollowupsDataTable extends StatelessWidget {
                           model.toggleFollowupRowSelection(rows[i]['id']),
                       onEdit: () => onEdit(rows[i]),
                       onDelete: () => onDelete(rows[i]),
+                      onMoreActions: () => showDialog(
+                        context: context,
+                        builder: (_) => _FollowupActionsDialog(
+                            item: rows[i]),
+                      ),
                     ),
                   ),
                 ),
@@ -3745,6 +3776,7 @@ class _FollowupDataRow extends StatelessWidget {
     required this.onToggleSelect,
     required this.onEdit,
     required this.onDelete,
+    required this.onMoreActions,
   });
   final Map<String, dynamic> item;
   final int rowIndex;
@@ -3756,6 +3788,7 @@ class _FollowupDataRow extends StatelessWidget {
   final VoidCallback onToggleSelect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onMoreActions;
 
   static const _div = BorderSide(color: Color(0xffEEEEEE), width: 0.8);
 
@@ -3839,6 +3872,16 @@ class _FollowupDataRow extends StatelessWidget {
                       size: 18, color: Color(0xffDC2626)),
                 ),
               ),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: onMoreActions,
+              borderRadius: BorderRadius.circular(4),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.more_vert,
+                    size: 18, color: Color(0xff6B7280)),
+              ),
+            ),
           ],
         ),
       );
@@ -3875,6 +3918,10 @@ class _FollowupDataRow extends StatelessWidget {
     } else if (key == 'svc_tax_rate') {
       final tr = _firstSvc?['tax_rate'];
       val = tr != null ? '$tr%' : '—';
+    } else if (key == 'svc_start_date') {
+      val = _fmt(_firstSvc?['start_date']);
+    } else if (key == 'svc_end_date') {
+      val = _fmt(_firstSvc?['end_date']);
     } else if (key == 'svc_original_duration') {
       val = _firstSvc?['original_duration']?.toString() ?? '—';
     } else if (key == 'nextFollowUpDate') {
@@ -5017,5 +5064,1048 @@ class _FollowupFormDialogState extends State<_FollowupFormDialog> {
         });
       },
     );
+  }
+}
+
+// ─── Followup "What would you like to do?" dialog ────────────────────────────
+
+class _FollowupActionsDialog extends StatefulWidget {
+  const _FollowupActionsDialog({required this.item});
+  final Map<String, dynamic> item;
+
+  @override
+  State<_FollowupActionsDialog> createState() => _FollowupActionsDialogState();
+}
+
+class _FollowupActionsDialogState extends State<_FollowupActionsDialog> {
+  bool _showBreakdown = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('What would you like to do?',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff111827))),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                _ActionBtn(
+                  icon: Icons.email_outlined,
+                  color: const Color(0xff2563EB),
+                  circular: true,
+                  onTap: () {
+                    Navigator.pop(context);
+                    showDialog(
+                      context: context,
+                      builder: (_) => _ComposeEmailDialog(
+                        item: widget.item,
+                        showBreakdown: _showBreakdown,
+                      ),
+                    );
+                  },
+                ),
+                _ActionBtn(
+                  icon: Icons.remove_red_eye_outlined,
+                  color: const Color(0xff0891B2),
+                  circular: true,
+                  onTap: () {
+                    final sm = ScaffoldMessenger.of(context);
+                    Navigator.pop(context);
+                    _previewPdf(sm, widget.item, _showBreakdown);
+                  },
+                ),
+                _ActionBtn(
+                  icon: Icons.download_outlined,
+                  color: const Color(0xff0891B2),
+                  circular: true,
+                  onTap: () {
+                    final sm = ScaffoldMessenger.of(context);
+                    Navigator.pop(context);
+                    _downloadPdf(sm, widget.item, _showBreakdown);
+                  },
+                ),
+                _ActionBtn(
+                  icon: Icons.close,
+                  color: const Color(0xffEF4444),
+                  bgColor: const Color(0xffFEF2F2),
+                  circular: true,
+                  onTap: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            InkWell(
+              onTap: () => setState(() => _showBreakdown = !_showBreakdown),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: Checkbox(
+                      value: _showBreakdown,
+                      activeColor: kCrmBlue,
+                      onChanged: (v) =>
+                          setState(() => _showBreakdown = v ?? false),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Show full amount breakdown (Original → Revised)',
+                      style: TextStyle(fontSize: 12, color: Color(0xff374151)),
+                      softWrap: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static void _previewPdf(ScaffoldMessengerState sm,
+      Map<String, dynamic> item, bool showBreakdown) async {
+    try {
+      final bytes = await _FollowupPdfGenerator.generate(item,
+          showBreakdown: showBreakdown);
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: 'Quote - ${item['lead_name'] ?? 'PDF'}',
+      );
+    } catch (e) {
+      sm.showSnackBar(SnackBar(
+          content: Text('PDF preview error: $e'),
+          backgroundColor: const Color(0xffDC2626)));
+    }
+  }
+
+  static void _downloadPdf(ScaffoldMessengerState sm,
+      Map<String, dynamic> item, bool showBreakdown) async {
+    try {
+      final bytes = await _FollowupPdfGenerator.generate(item,
+          showBreakdown: showBreakdown);
+      final dir = await getTemporaryDirectory();
+      final leadName =
+          (item['lead_name']?.toString() ?? 'quote').replaceAll(' ', '_');
+      final file = File('${dir.path}/quote_$leadName.pdf');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: 'Quote PDF');
+    } catch (e) {
+      sm.showSnackBar(SnackBar(
+          content: Text('Download error: $e'),
+          backgroundColor: const Color(0xffDC2626)));
+    }
+  }
+}
+
+// ─── Compose Email dialog ─────────────────────────────────────────────────────
+
+class _ComposeEmailDialog extends StatefulWidget {
+  const _ComposeEmailDialog(
+      {required this.item, required this.showBreakdown});
+  final Map<String, dynamic> item;
+  final bool showBreakdown;
+
+  @override
+  State<_ComposeEmailDialog> createState() => _ComposeEmailDialogState();
+}
+
+class _ComposeEmailDialogState extends State<_ComposeEmailDialog> {
+  final _api = locator<HippoAuthService>();
+  late final TextEditingController _subjectCtrl;
+  late final TextEditingController _bodyCtrl;
+  bool _sending = false;
+  String? _error;
+
+  String _contactName() {
+    final fn = widget.item['full_name']?.toString().trim() ?? '';
+    if (fn.isNotEmpty) return fn;
+    final cp = widget.item['contact_person']?.toString().trim() ?? '';
+    if (cp.isNotEmpty) return cp;
+    final ln = widget.item['lead_name']?.toString().trim() ?? '';
+    return ln.isNotEmpty ? ln : 'Sir/Madam';
+  }
+
+  String _makeBody(String contact, String company) =>
+      'Dear $contact,\n\nWe hope this message finds you well. '
+      'Attached are the details for your follow-up, including services, dates, and financial summary.\n\n'
+      'Please review the attached PDF for complete details. '
+      'Feel free to reach out if you have any questions or require further assistance.\n\n'
+      'Best regards,\n$company';
+
+  @override
+  void initState() {
+    super.initState();
+    final contactName = _contactName();
+    final leadName = widget.item['lead_name']?.toString() ?? '';
+    final dateStr = DateTime.now().toIso8601String().substring(0, 10);
+    _subjectCtrl = TextEditingController(
+        text: 'Follow-up Details for $leadName - $dateStr');
+    _bodyCtrl = TextEditingController(text: _makeBody(contactName, ''));
+
+    // Load company name from header settings
+    _api.getCompanySettingsForPdf().then((settings) {
+      if (!mounted) return;
+      final header = settings['header'] as Map<String, dynamic>? ?? {};
+      final company = (header['name']?.toString().trim().isNotEmpty == true
+              ? header['name'].toString().trim()
+              : header['companyname']?.toString().trim().isNotEmpty == true
+                  ? header['companyname'].toString().trim()
+                  : settings['userName']?.toString().trim() ?? '');
+      if (company.isNotEmpty) {
+        _bodyCtrl.text = _makeBody(contactName, company);
+      }
+    }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _subjectCtrl.dispose();
+    _bodyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final toEmail = widget.item['email']?.toString() ?? '';
+    if (toEmail.isEmpty) {
+      setState(() => _error = 'No email address found for this lead.');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      // Generate PDF and encode as base64
+      final bytes = await _FollowupPdfGenerator.generate(
+        widget.item,
+        showBreakdown: widget.showBreakdown,
+      );
+      final pdfBase64 = base64Encode(bytes);
+      final leadName =
+          (widget.item['lead_name']?.toString() ?? 'quote').replaceAll(' ', '_');
+      final fileName = 'followup_$leadName.pdf';
+
+      // Parse services from item
+      List<dynamic> services = [];
+      try {
+        final raw = widget.item['services'];
+        if (raw is List) {
+          services = raw;
+        } else if (raw is String && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) services = decoded;
+        }
+      } catch (_) {}
+
+      // Fetch company data for email template
+      List<dynamic> companydata = [];
+      try {
+        final settings = await _api.getCompanySettingsForPdf();
+        final header = settings['header'] as Map<String, dynamic>? ?? {};
+        if (header.isNotEmpty) companydata = [header];
+      } catch (_) {}
+
+      await _api.sendFollowupEmail(
+        toEmail: toEmail,
+        subject: _subjectCtrl.text.trim(),
+        message: _bodyCtrl.text.trim(),
+        pdfBase64: pdfBase64,
+        fileName: fileName,
+        lead: Map<String, dynamic>.from(widget.item),
+        services: services,
+        companydata: companydata,
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Email sent successfully'),
+              backgroundColor: Color(0xff16A34A)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+          _sending = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardH = MediaQuery.of(context).viewInsets.bottom;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding:
+          const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 560,
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + keyboardH),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Compose Email',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: kCrmBlue)),
+              const SizedBox(height: 20),
+              // Subject
+              TextField(
+                controller: _subjectCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Subject',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: kCrmBlue)),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              // Body
+              TextField(
+                controller: _bodyCtrl,
+                maxLines: 8,
+                decoration: InputDecoration(
+                  labelText: 'Email Content',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: kCrmBlue)),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(_error!,
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xffDC2626))),
+              ],
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: _sending ? null : _send,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _sending
+                            ? const Color(0xff9CA3AF)
+                            : kCrmBlue,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_sending)
+                            const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white))
+                          else
+                            const Icon(Icons.send_rounded,
+                                size: 16, color: Colors.white),
+                          const SizedBox(width: 8),
+                          const Text('SEND EMAIL',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: const Color(0xff9CA3AF)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.close,
+                              size: 16, color: Color(0xff6B7280)),
+                          SizedBox(width: 8),
+                          Text('CANCEL',
+                              style: TextStyle(
+                                  color: Color(0xff6B7280),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Followup PDF Generator ───────────────────────────────────────────────────
+
+class _FollowupPdfGenerator {
+  static Future<Uint8List> generate(
+    Map<String, dynamic> item, {
+    bool showBreakdown = false,
+  }) async {
+    // Load company settings
+    final api = locator<HippoAuthService>();
+    Map<String, dynamic> bank = {};
+    Map<String, dynamic> header = {};
+    String userName = '';
+    try {
+      final settings = await api.getCompanySettingsForPdf();
+      bank = settings['bank'] as Map<String, dynamic>? ?? {};
+      header = settings['header'] as Map<String, dynamic>? ?? {};
+      userName = settings['userName']?.toString() ?? '';
+    } catch (_) {}
+
+    // Load letterhead image from settings (preferred over programmatic header)
+    pw.ImageProvider? letterheadImage;
+    try {
+      final lhUrl = header['letterhead']?.toString() ?? '';
+      if (lhUrl.isNotEmpty) {
+        letterheadImage = await networkImage(lhUrl);
+      }
+    } catch (_) {}
+
+    // Load logo image (fallback when no letterhead image)
+    pw.ImageProvider? logoImage;
+    try {
+      final logoUrl = header['logo']?.toString() ?? '';
+      if (logoUrl.isNotEmpty) {
+        final netImg = await networkImage(logoUrl);
+        logoImage = netImg;
+      }
+    } catch (_) {}
+
+    // Load digital signature image
+    pw.ImageProvider? digisignImage;
+    try {
+      final digisignUrl = header['digisign']?.toString() ?? '';
+      if (digisignUrl.isNotEmpty) {
+        final netImg = await networkImage(digisignUrl);
+        digisignImage = netImg;
+      }
+    } catch (_) {}
+
+    // Parse services
+    List<Map<String, dynamic>> services = [];
+    try {
+      final raw = item['services'];
+      if (raw is List) {
+        services = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } else if (raw is String && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          services =
+              decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }
+    } catch (_) {}
+
+    // Financial calculations — use pre-computed revised amounts from the item.
+    // The backend stores original and revised totals after discount/round-off.
+    double taxableTotal = double.tryParse(
+            item['revised_taxableAmount']?.toString() ?? '') ??
+        double.tryParse(item['original_taxableAmount']?.toString() ?? '') ?? 0;
+    double taxTotal = double.tryParse(
+            item['revised_taxAmount']?.toString() ?? '') ??
+        double.tryParse(item['original_taxAmount']?.toString() ?? '') ?? 0;
+    double grandTotal = double.tryParse(
+            item['revised_totalAmount']?.toString() ?? '') ??
+        double.tryParse(item['original_totalAmount']?.toString() ?? '') ?? 0;
+
+    // Fall back to calculating from services if revised amounts are missing
+    if (taxableTotal == 0 && taxTotal == 0 && grandTotal == 0) {
+      for (final svc in services) {
+        final base = double.tryParse(svc['base_price']?.toString() ??
+                svc['taxable_amount']?.toString() ?? '0') ??
+            0;
+        final rate =
+            double.tryParse(svc['tax_rate']?.toString() ?? '0') ?? 0;
+        final storedTax =
+            double.tryParse(svc['tax_amount']?.toString() ?? '');
+        final tax = storedTax ??
+            double.parse((base * rate / 100).toStringAsFixed(2));
+        taxableTotal += base;
+        taxTotal += tax;
+      }
+      grandTotal = taxableTotal + taxTotal;
+    }
+
+    // Show a round-off / discount row only when total differs from taxable+tax
+    final computedSum = taxableTotal + taxTotal;
+    final roundOffDisplay = (computedSum - grandTotal).abs() > 0.005
+        ? computedSum - grandTotal
+        : 0.0;
+
+    // Date — use created_at from the followup; fall back to today
+    DateTime dateTime = DateTime.now();
+    try {
+      final raw = item['created_at']?.toString() ?? '';
+      if (raw.isNotEmpty) dateTime = DateTime.parse(raw).toLocal();
+    } catch (_) {}
+    final dateStr =
+        '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+
+    // Lead info
+    final leadName = item['lead_name']?.toString() ?? '—';
+    final contactPerson = (item['full_name']?.toString().trim().isNotEmpty == true
+            ? item['full_name'].toString().trim()
+            : item['contact_person']?.toString().trim().isNotEmpty == true
+                ? item['contact_person'].toString().trim()
+                : '');
+    final email = item['email']?.toString() ?? '';
+    final phone = item['phone']?.toString() ?? '';
+    // Try all known field name variants from the API
+    // Returns first non-empty, non-null, non-dash value from the given keys.
+    // Skips numeric-only values (IDs) when a name variant is available.
+    String fieldVal(List<String> keys) {
+      String best = '';
+      for (final k in keys) {
+        final v = item[k]?.toString().trim() ?? '';
+        if (v.isEmpty || v == 'null' || v == '-') continue;
+        // prefer a string value over a pure numeric ID
+        final isNumeric = double.tryParse(v) != null;
+        if (!isNumeric) return v;
+        if (best.isEmpty) best = v; // keep as fallback if nothing better found
+      }
+      return best;
+    }
+
+    String addressStr = '';
+    String cityStr    = '';
+    String stateStr   = '';
+    String countryStr = '';
+    String zipStr     = '';
+
+    // Always prefer the lead's address — the followup API JOINs other tables
+    // whose address-like fields (state_name, country_name etc.) may have
+    // unrelated values and must not be used for the "To:" block.
+    final leadId = item['leadId'] ?? item['leadid'] ?? item['lead_id'];
+    if (leadId != null) {
+      try {
+        final lead = await api.getLeadById(leadId);
+        if (lead != null) {
+          String leadFieldVal(List<String> keys) {
+            String best = '';
+            for (final k in keys) {
+              final v = lead[k]?.toString().trim() ?? '';
+              if (v.isEmpty || v == 'null' || v == '-') continue;
+              final isNumeric = double.tryParse(v) != null;
+              if (!isNumeric) return v;
+              if (best.isEmpty) best = v;
+            }
+            return best;
+          }
+          addressStr = leadFieldVal(['address', 'street_address']);
+          cityStr    = leadFieldVal(['city_name', 'city']);
+          stateStr   = leadFieldVal(['state_name', 'state']);
+          countryStr = leadFieldVal(['country_name', 'country']);
+          zipStr     = leadFieldVal(['zip_code', 'postal_code', 'pincode']);
+        }
+      } catch (_) {}
+    }
+
+    // Fallback to followup item fields if lead fetch failed or no leadId
+    if ([addressStr, cityStr, stateStr, countryStr, zipStr]
+        .every((s) => s.isEmpty)) {
+      addressStr = fieldVal(['address', 'street_address']);
+      cityStr    = fieldVal(['city_name', 'city']);
+      stateStr   = fieldVal(['state_name', 'state']);
+      countryStr = fieldVal(['country_name', 'country']);
+      zipStr     = fieldVal(['zip_code', 'postal_code', 'pincode']);
+    }
+
+    final address = [addressStr, cityStr, stateStr, countryStr, zipStr]
+        .where((s) => s.isNotEmpty)
+        .join(', ');
+
+    // Quotation notes/terms
+    List<String> terms = [];
+    try {
+      final raw = item['quotation_notes'];
+      if (raw is List) {
+        terms = raw.map((e) => e.toString()).toList();
+      } else if (raw is String && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) terms = decoded.map((e) => e.toString()).toList();
+      }
+    } catch (_) {}
+
+    final notes = item['notes']?.toString() ?? '';
+
+    // Build PDF
+    final doc = pw.Document();
+
+    // Fonts
+    final ttf = await PdfGoogleFonts.notoSansRegular();
+    final ttfBold = await PdfGoogleFonts.notoSansBold();
+
+    // Letterhead fills the full page as background on every page.
+    // Content renders on top within the margin area.
+    // top margin (155pt) positions content below the letterhead header area.
+    final pageTheme = letterheadImage != null
+        ? pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.fromLTRB(24, 130, 24, 55),
+            buildBackground: (pw.Context context) => pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Image(letterheadImage!,
+                  fit: pw.BoxFit.fill,
+                  width: PdfPageFormat.a4.width,
+                  height: PdfPageFormat.a4.height),
+            ),
+          )
+        : pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(0),
+          );
+
+    doc.addPage(pw.MultiPage(
+      pageTheme: pageTheme,
+      build: (pw.Context ctx) {
+        final widgets = <pw.Widget>[];
+
+        // Programmatic header — only shown when no letterhead image from settings
+        if (letterheadImage == null) {
+          widgets.add(pw.Container(
+            color: PdfColors.white,
+            child: pw.Column(children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.fromLTRB(24, 20, 24, 12),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    logoImage != null
+                        ? pw.Image(logoImage,
+                            width: 140, height: 55, fit: pw.BoxFit.contain)
+                        : pw.Text(userName,
+                            style: pw.TextStyle(
+                                font: ttfBold,
+                                fontSize: 18,
+                                color: const PdfColor.fromInt(0xFF1E3A8A))),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        if ((header['phone']?.toString() ?? '').isNotEmpty)
+                          pw.Text('☎ ${header['phone']}',
+                              style: pw.TextStyle(font: ttf, fontSize: 9)),
+                        if ((header['email']?.toString() ?? '').isNotEmpty)
+                          pw.Text('✉ ${header['email']}',
+                              style: pw.TextStyle(font: ttf, fontSize: 9)),
+                        if ((header['website']?.toString() ?? '').isNotEmpty)
+                          pw.Text('⊕ ${header['website']}',
+                              style: pw.TextStyle(font: ttf, fontSize: 9)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              pw.Divider(thickness: 1, color: PdfColors.grey400),
+            ]),
+          ));
+        }
+
+        // ── Title ───────────────────────────────────────────────
+        widgets.add(pw.Center(
+          child: pw.Text('Quote',
+              style: pw.TextStyle(
+                  font: ttfBold,
+                  fontSize: 16,
+                  color: const PdfColor.fromInt(0xFF1E3A8A))),
+        ));
+        widgets.add(pw.SizedBox(height: 8));
+
+        // ── To / Date ───────────────────────────────────────────
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('To:',
+                        style: pw.TextStyle(
+                            font: ttf,
+                            fontSize: 9,
+                            color: PdfColors.grey600)),
+                    pw.SizedBox(height: 2),
+                    pw.Text(leadName,
+                        style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+                    if (contactPerson.isNotEmpty)
+                      pw.Text(contactPerson,
+                          style: pw.TextStyle(font: ttf, fontSize: 9)),
+                    if (email.isNotEmpty)
+                      pw.Text(email,
+                          style: pw.TextStyle(font: ttf, fontSize: 9)),
+                    if (phone.isNotEmpty)
+                      pw.Text(phone,
+                          style: pw.TextStyle(font: ttf, fontSize: 9)),
+                    if (address.isNotEmpty)
+                      pw.Text(address,
+                          style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  ],
+                ),
+              ),
+              pw.Text('Date: $dateStr',
+                  style: pw.TextStyle(font: ttf, fontSize: 9)),
+            ],
+          ),
+        ));
+        widgets.add(pw.SizedBox(height: 10));
+
+        // ── Services heading ────────────────────────────────────
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+          child: pw.Text('Services Details',
+              style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+        ));
+        widgets.add(pw.SizedBox(height: 4));
+
+        // Services header row
+        const svcColWidths = <int, pw.TableColumnWidth>{
+          0: pw.FlexColumnWidth(3),
+          1: pw.FlexColumnWidth(2),
+          2: pw.FlexColumnWidth(2),
+        };
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+          child: pw.Table(
+            border: const pw.TableBorder(
+              top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              left: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              right: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              verticalInside:
+                  pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+            ),
+            columnWidths: svcColWidths,
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFF3F4F6)),
+                children: [
+                  _pdfCell('Service Name', ttfBold, isHeader: true),
+                  _pdfCell('Start Date', ttfBold, isHeader: true),
+                  _pdfCell('End Date', ttfBold, isHeader: true),
+                ],
+              ),
+            ],
+          ),
+        ));
+
+        // Each service row is a separate widget — MultiPage can break
+        // between rows, so 100+ services never overflow the page.
+        for (final svc in services) {
+          final name = svc['service_name']?.toString() ??
+              svc['product_name']?.toString() ??
+              svc['name']?.toString() ??
+              '—';
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+            child: pw.Table(
+              border: const pw.TableBorder(
+                bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+                left: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+                right: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+                verticalInside:
+                    pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              ),
+              columnWidths: svcColWidths,
+              children: [
+                pw.TableRow(children: [
+                  _pdfCell(name, ttf),
+                  _pdfCell(_fmtDate(svc['start_date']), ttf),
+                  _pdfCell(_fmtDate(svc['end_date']), ttf),
+                ]),
+              ],
+            ),
+          ));
+        }
+        widgets.add(pw.SizedBox(height: 8));
+
+        // ── Financial Summary ───────────────────────────────────
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+          child: pw.Text('Financial Summary',
+              style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+        ));
+        widgets.add(pw.SizedBox(height: 4));
+
+        final finRows = <pw.TableRow>[
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFF3F4F6)),
+            children: [
+              _pdfCell('Description', ttfBold, isHeader: true),
+              _pdfCell('Amount', ttfBold,
+                  isHeader: true, align: pw.TextAlign.right),
+            ],
+          ),
+          pw.TableRow(children: [
+            _pdfCell('Taxable Amount', ttf),
+            _pdfCell(taxableTotal.toStringAsFixed(2), ttf,
+                align: pw.TextAlign.right),
+          ]),
+          pw.TableRow(children: [
+            _pdfCell('Tax Amount', ttf),
+            _pdfCell(taxTotal.toStringAsFixed(2), ttf,
+                align: pw.TextAlign.right),
+          ]),
+          if (roundOffDisplay.abs() > 0.005)
+            pw.TableRow(children: [
+              _pdfCell('Discount / Round Off', ttf),
+              _pdfCell(roundOffDisplay.toStringAsFixed(2), ttf,
+                  align: pw.TextAlign.right),
+            ]),
+          pw.TableRow(children: [
+            _pdfCell('Total Amount', ttfBold),
+            _pdfCell(grandTotal.toStringAsFixed(2), ttfBold,
+                align: pw.TextAlign.right),
+          ]),
+        ];
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+          child: pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(4),
+              1: pw.FlexColumnWidth(2),
+            },
+            children: finRows,
+          ),
+        ));
+        widgets.add(pw.SizedBox(height: 8));
+
+        // ── Terms & Conditions ──────────────────────────────────
+        if (terms.isNotEmpty) {
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+            child: pw.Text('Terms & Conditions:',
+                style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          ));
+          widgets.add(pw.SizedBox(height: 2));
+          for (final t in terms) {
+            widgets.add(pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+              child:
+                  pw.Text('• $t', style: pw.TextStyle(font: ttf, fontSize: 9)),
+            ));
+          }
+          widgets.add(pw.SizedBox(height: 8));
+        }
+
+        // ── Additional Notes ────────────────────────────────────
+        if (notes.isNotEmpty) {
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+            child: pw.Text('Additional Notes:',
+                style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          ));
+          widgets.add(pw.SizedBox(height: 2));
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+            child:
+                pw.Text(notes, style: pw.TextStyle(font: ttf, fontSize: 9)),
+          ));
+          widgets.add(pw.SizedBox(height: 8));
+        }
+
+        // ── Bank Details ────────────────────────────────────────
+        if (bank.isNotEmpty) {
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+            child: pw.Text('Bank Details:',
+                style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          ));
+          widgets.add(pw.SizedBox(height: 4));
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+            child: pw.Table(
+              columnWidths: const {
+                0: pw.FlexColumnWidth(1),
+                1: pw.FlexColumnWidth(1),
+              },
+              children: [
+                pw.TableRow(children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      _bankRow('Bank Name', bank['bankname'], ttf, ttfBold),
+                      _bankRow(
+                          'A/C Number', bank['accountnumber'], ttf, ttfBold),
+                      _bankRow(
+                          'Branch Name', bank['branchname'], ttf, ttfBold),
+                      _bankRow('Branch Address', bank['branchaddress'], ttf,
+                          ttfBold),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      _bankRow('A/C Holder', bank['accountholdername'], ttf,
+                          ttfBold),
+                      _bankRow('IFSC Code', bank['ifsccode'], ttf, ttfBold),
+                      _bankRow('MICR Code', bank['micrcode'], ttf, ttfBold),
+                    ],
+                  ),
+                ]),
+              ],
+            ),
+          ));
+          widgets.add(pw.SizedBox(height: 8));
+        }
+
+        // ── Authorized Signatory ────────────────────────────────
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 24),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text('For $userName',
+                      style: pw.TextStyle(
+                          font: ttf,
+                          fontSize: 9,
+                          fontStyle: pw.FontStyle.italic)),
+                  if (digisignImage != null)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(vertical: 3),
+                      child: pw.Image(digisignImage,
+                          width: 70, height: 35, fit: pw.BoxFit.contain),
+                    )
+                  else
+                    pw.SizedBox(height: 18),
+                  pw.Text('Authorized Signatory',
+                      style: pw.TextStyle(
+                          font: ttf,
+                          fontSize: 9,
+                          fontStyle: pw.FontStyle.italic)),
+                ],
+              ),
+            ],
+          ),
+        ));
+        widgets.add(pw.SizedBox(height: 8));
+
+        return widgets;
+      },
+
+      // Footer only when no letterhead — the letterhead image already
+      // has a footer area baked into its design.
+      footer: letterheadImage != null
+          ? null
+          : (pw.Context ctx) => pw.Container(
+                decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                        top: pw.BorderSide(color: PdfColors.grey400))),
+                padding:
+                    const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                child: pw.Text(
+                  header['address']?.toString().isNotEmpty == true
+                      ? header['address'].toString()
+                      : 'HippoCloud Technologies Pvt. Ltd.',
+                  style: pw.TextStyle(
+                      font: ttf, fontSize: 8, color: PdfColors.grey600),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+    ));
+
+    return doc.save();
+  }
+
+  static pw.Widget _pdfCell(String text, pw.Font font,
+      {bool isHeader = false, pw.TextAlign align = pw.TextAlign.left}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      child: pw.Text(text,
+          textAlign: align,
+          style: pw.TextStyle(
+              font: font,
+              fontSize: isHeader ? 9 : 8,
+              color: isHeader ? PdfColors.grey800 : PdfColors.grey700)),
+    );
+  }
+
+  static pw.Widget _bankRow(
+      String label, dynamic value, pw.Font ttf, pw.Font ttfBold) {
+    final v = value?.toString() ?? '';
+    if (v.isEmpty) return pw.SizedBox();
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 2),
+      child: pw.RichText(
+        text: pw.TextSpan(children: [
+          pw.TextSpan(
+              text: '$label: ',
+              style: pw.TextStyle(font: ttfBold, fontSize: 8)),
+          pw.TextSpan(text: v, style: pw.TextStyle(font: ttf, fontSize: 8)),
+        ]),
+      ),
+    );
+  }
+
+  static String _fmtDate(dynamic v) {
+    if (v == null) return '—';
+    final s = v.toString().trim();
+    if (s.isEmpty || s == 'null') return '—';
+    try {
+      final dt = DateTime.parse(s);
+      return '${dt.day.toString().padLeft(2, '0')}/'
+          '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    } catch (_) {
+      return s;
+    }
   }
 }

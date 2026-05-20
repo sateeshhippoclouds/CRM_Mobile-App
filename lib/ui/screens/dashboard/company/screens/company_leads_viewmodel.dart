@@ -94,16 +94,18 @@ class CompanyLeadsViewModel extends BaseViewModel {
     'employee_name': true,
     'status': true,
     'svc_name': true,
-    'svc_duration': false,
+    'svc_duration': true,
     'svc_base_price': true,
-    'svc_tax_rate': false,
-    'svc_original_duration': false,
+    'svc_tax_rate': true,
+    'svc_start_date': true,
+    'svc_end_date': true,
+    'svc_original_duration': true,
     'nextFollowUpDate': true,
     'wantAddServices': true,
     'negotiate': true,
     'quotation_title': true,
     'created_at': true,
-    'notes': false,
+    'notes': true,
   };
 
   // ── Static config ─────────────────────────────────────────────────────────────
@@ -128,6 +130,8 @@ class CompanyLeadsViewModel extends BaseViewModel {
     FollowupColumnDef('Duration', 'svc_duration', 90, filterable: false),
     FollowupColumnDef('Base Price', 'svc_base_price', 110, filterable: false),
     FollowupColumnDef('Tax', 'svc_tax_rate', 90, filterable: false),
+    FollowupColumnDef('Start Date', 'svc_start_date', 110, filterable: false),
+    FollowupColumnDef('End Date', 'svc_end_date', 110, filterable: false),
     FollowupColumnDef('Req Duration', 'svc_original_duration', 110,
         filterable: false),
     FollowupColumnDef('Next Follow-Up', 'nextFollowUpDate', 130,
@@ -535,12 +539,6 @@ class CompanyLeadsViewModel extends BaseViewModel {
       _followupItems = List<Map<String, dynamic>>.from(result['data'] as List);
       _followupsTotal = result['total'] as int;
       _followupsLoaded = true;
-      debugPrint('=== FOLLOWUPS DATA ===');
-      debugPrint('Total: $_followupsTotal | Loaded: ${_followupItems.length}');
-      for (final e in _followupItems) {
-        debugPrint(e.toString());
-      }
-      debugPrint('=== END FOLLOWUPS ===');
     } catch (e) {
       if (!_followupsLoaded) {
         fetchFollowupsError = e.toString().replaceFirst('Exception: ', '');
