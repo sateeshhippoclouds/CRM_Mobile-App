@@ -2757,11 +2757,14 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
     SmartDialog.showLoading(msg: 'Generating PDF…');
     try {
       final bytes = await _ClientInvoicePdfGenerator.generate(
-          widget.item, _data?['client'] as Map<String, dynamic>? ?? widget.item, sub, services);
-      SmartDialog.dismiss();
+          widget.item,
+          _data?['client'] as Map<String, dynamic>? ?? widget.item,
+          sub,
+          services);
+      await SmartDialog.dismiss();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
-        name: 'Invoice - ${widget.item['client_name'] ?? 'PDF'}',
+        name: 'Subscription - ${widget.item['client_name'] ?? 'PDF'}',
       );
     } catch (e) {
       SmartDialog.dismiss();
@@ -2782,16 +2785,19 @@ class _ClientHistoryDialogState extends State<_ClientHistoryDialog> {
     SmartDialog.showLoading(msg: 'Preparing PDF…');
     try {
       final bytes = await _ClientInvoicePdfGenerator.generate(
-          widget.item, _data?['client'] as Map<String, dynamic>? ?? widget.item, sub, services);
+          widget.item,
+          _data?['client'] as Map<String, dynamic>? ?? widget.item,
+          sub,
+          services);
       final dir = await getTemporaryDirectory();
       final name = (widget.item['client_name']?.toString() ?? 'invoice')
           .replaceAll(' ', '_');
-      final file = File('${dir.path}/invoice_$name.pdf');
+      final file = File('${dir.path}/subscription_$name.pdf');
       await file.writeAsBytes(bytes);
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       await Share.shareXFiles([XFile(file.path)], text: 'Invoice PDF');
     } catch (e) {
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Download error: $e'),
@@ -3416,15 +3422,15 @@ class _ClientActionsDialog extends StatelessWidget {
     Navigator.pop(context);
     SmartDialog.showLoading(msg: 'Generating PDF…');
     try {
-      final bytes = await _ClientInvoicePdfGenerator.generate(
+      final bytes = await _ClientSimpleInvoicePdfGenerator.generate(
           item, item, item, _services());
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'Invoice - ${item['client_name'] ?? 'PDF'}',
       );
     } catch (e) {
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('PDF error: $e'),
           backgroundColor: const Color(0xffDC2626)));
@@ -3440,17 +3446,17 @@ class _ClientActionsDialog extends StatelessWidget {
     Navigator.pop(context);
     SmartDialog.showLoading(msg: 'Preparing PDF…');
     try {
-      final bytes = await _ClientInvoicePdfGenerator.generate(
+      final bytes = await _ClientSimpleInvoicePdfGenerator.generate(
           item, item, item, _services());
       final dir = await getTemporaryDirectory();
       final name = (item['client_name']?.toString() ?? 'invoice')
           .replaceAll(' ', '_');
       final file = File('${dir.path}/invoice_$name.pdf');
       await file.writeAsBytes(bytes);
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       await Share.shareXFiles([XFile(file.path)], text: 'Invoice PDF');
     } catch (e) {
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('Download error: $e'),
           backgroundColor: const Color(0xffDC2626)));
@@ -3611,11 +3617,12 @@ class _ClientInvoicePdfGenerator {
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}'
         ' ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    // ── Page theme (letterhead as full-page background) ───────────────────────
+    // ── Page theme ────────────────────────────────────────────────────────────
+    // bottom=75 reserves space for signatory(~55px) + footer bar(~20px)
     final pageTheme = letterheadImage != null
         ? pw.PageTheme(
             pageFormat: PdfPageFormat.a4,
-            margin: const pw.EdgeInsets.fromLTRB(28, 130, 28, 55),
+            margin: const pw.EdgeInsets.fromLTRB(28, 130, 28, 75),
             buildBackground: (pw.Context context) => pw.FullPage(
               ignoreMargins: true,
               child: pw.Image(letterheadImage!,
@@ -3626,7 +3633,7 @@ class _ClientInvoicePdfGenerator {
           )
         : pw.PageTheme(
             pageFormat: PdfPageFormat.a4,
-            margin: const pw.EdgeInsets.fromLTRB(28, 20, 28, 20),
+            margin: const pw.EdgeInsets.fromLTRB(28, 20, 28, 75),
           );
 
     final doc = pw.Document();
@@ -3668,14 +3675,14 @@ class _ClientInvoicePdfGenerator {
         // ── Title ─────────────────────────────────────────────────────────────
         widgets.add(pw.Center(
           child: pw.Text('Subscription Statement — Term $termNum',
-              style: pw.TextStyle(font: ttfBold, fontSize: 15,
+              style: pw.TextStyle(font: ttfBold, fontSize: 13,
                   color: const PdfColor.fromInt(0xFF1E3A8A))),
         ));
-        widgets.add(pw.SizedBox(height: 12));
+        widgets.add(pw.SizedBox(height: 6));
 
         // ── Client Information ─────────────────────────────────────────────────
         widgets.add(_sectionHeader('Client Information', ttfBold));
-        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(pw.SizedBox(height: 4));
         widgets.add(_infoGrid([
           ['Client Name', clientName],
           ['Contact Person', contact],
@@ -3684,14 +3691,14 @@ class _ClientInvoicePdfGenerator {
           ['Assigned To', assignedTo],
           ['Status', clientStatus],
         ], ttf, ttfBold));
-        widgets.add(pw.SizedBox(height: 4));
+        widgets.add(pw.SizedBox(height: 2));
         widgets.add(pw.Text('Generated: $genStr',
-            style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600)));
-        widgets.add(pw.SizedBox(height: 12));
+            style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)));
+        widgets.add(pw.SizedBox(height: 6));
 
         // ── Term Overview ──────────────────────────────────────────────────────
         widgets.add(_sectionHeader('Term $termNum Overview', ttfBold));
-        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(pw.SizedBox(height: 4));
         widgets.add(_infoGrid([
           ['Subscription ID', '#$subId'],
           ['Term Number', 'Term $termNum'],
@@ -3702,11 +3709,11 @@ class _ClientInvoicePdfGenerator {
           ['Negotiate', negotiate],
           ['Round Off', roundOff.toStringAsFixed(2)],
         ], ttf, ttfBold));
-        widgets.add(pw.SizedBox(height: 12));
+        widgets.add(pw.SizedBox(height: 6));
 
         // ── Services Breakdown ─────────────────────────────────────────────────
         widgets.add(_sectionHeader('Services Breakdown', ttfBold));
-        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(pw.SizedBox(height: 4));
 
         const svcCols = <int, pw.TableColumnWidth>{
           0: pw.FixedColumnWidth(22),
@@ -3774,11 +3781,11 @@ class _ClientInvoicePdfGenerator {
           widgets.add(_subtotalRow('Previous Balance:', carriedOver.toStringAsFixed(2), ttf));
           widgets.add(_subtotalRow('Amount to Collect:', toCollect.toStringAsFixed(2), ttfBold, bold: true));
         }
-        widgets.add(pw.SizedBox(height: 12));
+        widgets.add(pw.SizedBox(height: 6));
 
         // ── Payment History ────────────────────────────────────────────────────
         widgets.add(_sectionHeader('Payment History', ttfBold));
-        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(pw.SizedBox(height: 4));
         final payments = <Map<String, dynamic>>[];
         try {
           final raw = sub['payments'];
@@ -3788,7 +3795,7 @@ class _ClientInvoicePdfGenerator {
         } catch (_) {}
         if (payments.isEmpty) {
           widgets.add(pw.Text('No payments recorded for this term.',
-              style: pw.TextStyle(font: ttf, fontSize: 9,
+              style: pw.TextStyle(font: ttf, fontSize: 8,
                   fontStyle: pw.FontStyle.italic, color: PdfColors.grey600)));
         } else {
           final payRows = <pw.TableRow>[
@@ -3820,11 +3827,11 @@ class _ClientInvoicePdfGenerator {
             children: payRows,
           ));
         }
-        widgets.add(pw.SizedBox(height: 12));
+        widgets.add(pw.SizedBox(height: 6));
 
         // ── Financial Summary ─────────────────────────────────────────────────
         widgets.add(_sectionHeader('Financial Summary', ttfBold));
-        widgets.add(pw.SizedBox(height: 6));
+        widgets.add(pw.SizedBox(height: 4));
         widgets.add(_financialRow('Agreed Amount (Revised Total):', revisedTotal.toStringAsFixed(2), ttf, ttfBold));
         if (carriedOver > 0) {
           widgets.add(_financialRow('Balance Carried from Previous Term:', carriedOver.toStringAsFixed(2), ttf, ttfBold));
@@ -3832,29 +3839,6 @@ class _ClientInvoicePdfGenerator {
         }
         widgets.add(_financialRow('Total Paid:', totalPaid.toStringAsFixed(2), ttf, ttfBold));
         widgets.add(_financialRow('Balance Due:', balanceDue.toStringAsFixed(2), ttf, ttfBold, highlight: true));
-        widgets.add(pw.SizedBox(height: 16));
-
-        // ── Authorized Signatory ──────────────────────────────────────────────
-        widgets.add(pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.end,
-          children: [
-            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
-              if (digisignImage != null)
-                pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 4),
-                  child: pw.Image(digisignImage,
-                      width: 80, height: 40, fit: pw.BoxFit.contain),
-                )
-              else
-                pw.SizedBox(height: 28),
-              pw.Text('Authorized Signatory',
-                  style: pw.TextStyle(font: ttf, fontSize: 8,
-                      fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
-              pw.Text(userName,
-                  style: pw.TextStyle(font: ttfBold, fontSize: 9)),
-            ]),
-          ],
-        ));
 
         return widgets;
       },
@@ -3862,24 +3846,71 @@ class _ClientInvoicePdfGenerator {
         final footerAddr = header['address']?.toString().isNotEmpty == true
             ? header['address'].toString()
             : 'HippoCloud Technologies Pvt. Ltd.';
-        return pw.Container(
-          decoration: const pw.BoxDecoration(
-              border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300))),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(userName,
-                  style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)),
-              pw.Expanded(
-                child: pw.Text(footerAddr,
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)),
+        final isLast = ctx.pageNumber == ctx.pagesCount;
+        return pw.Column(
+          mainAxisSize: pw.MainAxisSize.min,
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            if (isLast) ...[
+              pw.SizedBox(height: 6),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      if (digisignImage != null)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.only(bottom: 4),
+                          child: pw.Image(digisignImage,
+                              width: 80, height: 40, fit: pw.BoxFit.contain),
+                        )
+                      else
+                        pw.SizedBox(height: 28),
+                      pw.Text('Authorized Signatory',
+                          style: pw.TextStyle(
+                              font: ttf,
+                              fontSize: 8,
+                              fontStyle: pw.FontStyle.italic,
+                              color: PdfColors.grey700)),
+                      pw.Text(userName,
+                          style: pw.TextStyle(font: ttfBold, fontSize: 9)),
+                    ],
+                  ),
+                ],
               ),
-              pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}  $genStr',
-                  style: pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey600)),
+              pw.SizedBox(height: 6),
             ],
-          ),
+            pw.Container(
+              decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                      top: pw.BorderSide(color: PdfColors.grey300))),
+              padding:
+                  const pw.EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(userName,
+                      style: pw.TextStyle(
+                          font: ttf, fontSize: 7, color: PdfColors.grey600)),
+                  pw.Expanded(
+                    child: pw.Text(footerAddr,
+                        textAlign: pw.TextAlign.center,
+                        style: pw.TextStyle(
+                            font: ttf,
+                            fontSize: 7,
+                            color: PdfColors.grey600)),
+                  ),
+                  pw.Text(
+                      'Page ${ctx.pageNumber} of ${ctx.pagesCount}  $genStr',
+                      style: pw.TextStyle(
+                          font: ttf,
+                          fontSize: 7,
+                          color: PdfColors.grey600)),
+                ],
+              ),
+            ),
+          ],
         );
       },
     ));
@@ -3901,12 +3932,9 @@ class _ClientInvoicePdfGenerator {
   }
 
   static pw.Widget _sectionHeader(String title, pw.Font ttfBold) =>
-      pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-        pw.Text(title,
-            style: pw.TextStyle(
-                font: ttfBold, fontSize: 11, color: PdfColors.black)),
-        pw.Divider(thickness: 0.8, color: PdfColors.grey500),
-      ]);
+      pw.Text(title,
+          style: pw.TextStyle(
+              font: ttfBold, fontSize: 9, color: PdfColors.black));
 
   static pw.Widget _infoGrid(
       List<List<String>> rows, pw.Font ttf, pw.Font ttfBold) {
@@ -3932,16 +3960,16 @@ class _ClientInvoicePdfGenerator {
   static pw.Widget _infoCell(
       String label, String value, pw.Font ttf, pw.Font ttfBold) =>
       pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+        padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 2),
         child: pw.RichText(
           text: pw.TextSpan(children: [
             pw.TextSpan(
                 text: label.isNotEmpty ? '$label: ' : '',
-                style: pw.TextStyle(font: ttfBold, fontSize: 9,
+                style: pw.TextStyle(font: ttfBold, fontSize: 8,
                     color: PdfColors.grey800)),
             pw.TextSpan(
                 text: value,
-                style: pw.TextStyle(font: ttf, fontSize: 9,
+                style: pw.TextStyle(font: ttf, fontSize: 8,
                     color: PdfColors.grey900)),
           ]),
         ),
@@ -3962,13 +3990,13 @@ class _ClientInvoicePdfGenerator {
   static pw.Widget _subtotalRow(
       String label, String value, pw.Font font, {bool bold = false}) =>
       pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.end,
           children: [
             pw.Text(label,
                 style: pw.TextStyle(
-                    font: font, fontSize: bold ? 9 : 8,
+                    font: font, fontSize: bold ? 8 : 7,
                     color: bold ? PdfColors.grey900 : PdfColors.grey700)),
             pw.SizedBox(width: 40),
             pw.SizedBox(
@@ -3976,7 +4004,7 @@ class _ClientInvoicePdfGenerator {
               child: pw.Text(value,
                   textAlign: pw.TextAlign.right,
                   style: pw.TextStyle(
-                      font: font, fontSize: bold ? 9 : 8,
+                      font: font, fontSize: bold ? 8 : 7,
                       color: bold ? PdfColors.grey900 : PdfColors.grey700)),
             ),
           ],
@@ -3987,7 +4015,7 @@ class _ClientInvoicePdfGenerator {
       String label, String value, pw.Font ttf, pw.Font ttfBold,
       {bool highlight = false}) =>
       pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         color: highlight ? const PdfColor.fromInt(0xFFFFF7ED) : PdfColors.white,
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -3995,18 +4023,522 @@ class _ClientInvoicePdfGenerator {
             pw.Text(label,
                 style: pw.TextStyle(
                     font: highlight ? ttfBold : ttf,
-                    fontSize: highlight ? 10 : 9,
+                    fontSize: highlight ? 9 : 8,
                     color: highlight
                         ? const PdfColor.fromInt(0xFFDC2626)
                         : PdfColors.grey800)),
             pw.Text(value,
                 style: pw.TextStyle(
                     font: ttfBold,
-                    fontSize: highlight ? 10 : 9,
+                    fontSize: highlight ? 9 : 8,
                     color: highlight
                         ? const PdfColor.fromInt(0xFFDC2626)
                         : PdfColors.grey900)),
           ],
+        ),
+      );
+}
+
+// ─── Client Simple Invoice PDF Generator ──────────────────────────────────────
+
+class _ClientSimpleInvoicePdfGenerator {
+  static Future<Uint8List> generate(
+    Map<String, dynamic> listItem,
+    Map<String, dynamic> clientData,
+    Map<String, dynamic> sub,
+    List<Map<String, dynamic>> services, {
+    String title = 'Invoice',
+    bool showSubscriptionDetails = false,
+  }) async {
+    final api = locator<HippoAuthService>();
+    Map<String, dynamic> header = {};
+    Map<String, dynamic> bank = {};
+    String userName = '';
+    try {
+      final settings = await api.getCompanySettingsForPdf();
+      header = settings['header'] as Map<String, dynamic>? ?? {};
+      bank = settings['bank'] as Map<String, dynamic>? ?? {};
+      userName = settings['userName']?.toString() ?? '';
+    } catch (_) {}
+
+    pw.ImageProvider? letterheadImage;
+    try {
+      final lhUrl = header['letterhead']?.toString() ?? '';
+      if (lhUrl.isNotEmpty) letterheadImage = await networkImage(lhUrl);
+    } catch (_) {}
+
+    pw.ImageProvider? logoImage;
+    try {
+      final logoUrl = header['logo']?.toString() ?? '';
+      if (logoUrl.isNotEmpty) logoImage = await networkImage(logoUrl);
+    } catch (_) {}
+
+    pw.ImageProvider? digisignImage;
+    try {
+      final dsUrl = header['digisign']?.toString() ?? '';
+      if (dsUrl.isNotEmpty) digisignImage = await networkImage(dsUrl);
+    } catch (_) {}
+
+    final ttf = await PdfGoogleFonts.notoSansRegular();
+    final ttfBold = await PdfGoogleFonts.notoSansBold();
+
+    final clientName = clientData['client_name']?.toString() ??
+        listItem['client_name']?.toString() ?? '—';
+    final contact = clientData['contact_person']?.toString() ??
+        listItem['contact_person']?.toString() ?? '—';
+    final email = clientData['email']?.toString() ??
+        listItem['email']?.toString() ?? '—';
+    final phone = clientData['phone']?.toString() ??
+        listItem['phone']?.toString() ?? '—';
+    final rawAddr = clientData['complete_address']?.toString().trim() ??
+        listItem['complete_address']?.toString().trim() ?? '';
+    final address = rawAddr.isNotEmpty
+        ? rawAddr
+        : [
+            clientData['street_address'] ?? listItem['street_address'],
+            clientData['postal_code'] ?? listItem['postal_code'],
+          ].where((v) => v != null && v.toString().isNotEmpty).join(', ');
+
+    final revisedTaxable =
+        double.tryParse(sub['revised_taxable_amount']?.toString() ?? '') ?? 0;
+    final revisedTax =
+        double.tryParse(sub['revised_tax_amount']?.toString() ?? '') ?? 0;
+    final revisedTotal =
+        double.tryParse(sub['revised_total_amount']?.toString() ??
+            sub['round_off']?.toString() ?? '') ?? 0;
+
+    // Subscription term fields
+    final termNum = sub['term_number']?.toString() ?? '1';
+    final subId = sub['subscription_id']?.toString() ??
+        sub['current_subscription_id']?.toString() ??
+        sub['id']?.toString() ?? '—';
+    final subStatus = (sub['status']?.toString() ?? '').toUpperCase();
+    final discount = sub['discount']?.toString() ?? '0.00';
+    final taxOption = sub['tax_option']?.toString() ?? '—';
+    final negotiate = sub['negotiate']?.toString() ?? '—';
+    final roundOff =
+        double.tryParse(sub['round_off']?.toString() ?? '0') ?? 0;
+    final periodStart = _fmt(sub['start_date'] ??
+        (services.isNotEmpty ? services.first['start_date'] : null));
+    final periodEnd = _fmt(sub['end_date'] ??
+        (services.isNotEmpty ? services.first['end_date'] : null));
+    final origTotal =
+        double.tryParse(sub['original_total_amount']?.toString() ?? '') ?? 0;
+    final origTax =
+        double.tryParse(sub['original_tax_amount']?.toString() ?? '') ?? 0;
+    final totalPaid =
+        double.tryParse(sub['total_paid']?.toString() ?? '0') ?? 0;
+    final balanceDue = revisedTotal - totalPaid;
+
+    final now = DateTime.now();
+    final dateStr =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+
+    final pageTheme = letterheadImage != null
+        ? pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.fromLTRB(28, 130, 28, 55),
+            buildBackground: (pw.Context context) => pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Image(letterheadImage!,
+                  fit: pw.BoxFit.fill,
+                  width: PdfPageFormat.a4.width,
+                  height: PdfPageFormat.a4.height),
+            ),
+          )
+        : pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.fromLTRB(28, 20, 28, 20),
+          );
+
+    final doc = pw.Document();
+    doc.addPage(pw.MultiPage(
+      pageTheme: pageTheme,
+      build: (pw.Context ctx) {
+        final widgets = <pw.Widget>[];
+
+        if (letterheadImage == null) {
+          widgets.add(pw.Column(children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                logoImage != null
+                    ? pw.Image(logoImage, width: 130, height: 50,
+                        fit: pw.BoxFit.contain)
+                    : pw.Text(userName,
+                        style: pw.TextStyle(font: ttfBold, fontSize: 18,
+                            color: const PdfColor.fromInt(0xFF1E3A8A))),
+                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                  if ((header['phone']?.toString() ?? '').isNotEmpty)
+                    pw.Text('☎ ${header['phone']}',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  if ((header['email']?.toString() ?? '').isNotEmpty)
+                    pw.Text('✉ ${header['email']}',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  if ((header['website']?.toString() ?? '').isNotEmpty)
+                    pw.Text('⊕ ${header['website']}',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                ]),
+              ],
+            ),
+            pw.Divider(thickness: 0.8, color: PdfColors.grey400),
+            pw.SizedBox(height: 6),
+          ]));
+        }
+
+        widgets.add(pw.Center(
+          child: pw.Text(title,
+              style: pw.TextStyle(font: ttfBold, fontSize: 18,
+                  color: const PdfColor.fromInt(0xFF111827))),
+        ));
+        widgets.add(pw.SizedBox(height: 10));
+
+        widgets.add(pw.Text('Invoice for $clientName',
+            style: pw.TextStyle(font: ttfBold, fontSize: 13)));
+        widgets.add(pw.SizedBox(height: 8));
+
+        widgets.add(pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('To: $clientName',
+                      style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  pw.Text('Contact: $contact',
+                      style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  pw.Text('Email: $email',
+                      style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  pw.Text('Phone: $phone',
+                      style: pw.TextStyle(font: ttf, fontSize: 9)),
+                  if (address.isNotEmpty)
+                    pw.Text('Address: $address',
+                        style: pw.TextStyle(font: ttf, fontSize: 9)),
+                ],
+              ),
+            ),
+            pw.Text('Date: $dateStr',
+                style: pw.TextStyle(font: ttf, fontSize: 9)),
+          ],
+        ));
+        widgets.add(pw.SizedBox(height: 14));
+
+        // Subscription Details (only for eye button / subscription view)
+        if (showSubscriptionDetails) {
+          widgets.add(pw.Text('Subscription Details',
+              style: pw.TextStyle(font: ttfBold, fontSize: 11)));
+          widgets.add(pw.Divider(thickness: 0.8, color: PdfColors.grey500));
+          widgets.add(pw.SizedBox(height: 4));
+          widgets.add(pw.Table(
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1),
+              1: pw.FlexColumnWidth(1),
+            },
+            children: [
+              pw.TableRow(children: [
+                _infoLine('Subscription ID', '#$subId', ttf, ttfBold),
+                _infoLine('Term Number', 'Term $termNum', ttf, ttfBold),
+              ]),
+              pw.TableRow(children: [
+                _infoLine('Status', subStatus, ttf, ttfBold),
+                _infoLine('Period', '$periodStart – $periodEnd', ttf, ttfBold),
+              ]),
+              pw.TableRow(children: [
+                _infoLine('Discount', '$discount%', ttf, ttfBold),
+                _infoLine('Tax Option', taxOption, ttf, ttfBold),
+              ]),
+              pw.TableRow(children: [
+                _infoLine('Negotiate', negotiate, ttf, ttfBold),
+                _infoLine('Round Off', roundOff.toStringAsFixed(2), ttf,
+                    ttfBold),
+              ]),
+            ],
+          ));
+          widgets.add(pw.SizedBox(height: 14));
+        }
+
+        // Services Details
+        widgets.add(pw.Text('Services Details',
+            style: pw.TextStyle(font: ttfBold, fontSize: 11)));
+        widgets.add(pw.Divider(thickness: 0.8, color: PdfColors.grey500));
+        widgets.add(pw.SizedBox(height: 4));
+
+        final svcRows = <pw.TableRow>[
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFF3F4F6)),
+            children: [
+              _cell('Service', ttfBold, isHeader: true),
+              _cell('Start Date', ttfBold,
+                  isHeader: true, align: pw.TextAlign.center),
+              _cell('End Date', ttfBold,
+                  isHeader: true, align: pw.TextAlign.center),
+              _cell('Days', ttfBold,
+                  isHeader: true, align: pw.TextAlign.center),
+            ],
+          ),
+        ];
+        for (final svc in services) {
+          final svcName = svc['service_name']?.toString() ??
+              svc['product_name']?.toString() ?? '—';
+          final startDate = _fmt(svc['start_date']);
+          final endDate = _fmt(svc['end_date']);
+          final days = svc['duration']?.toString() ?? '—';
+          svcRows.add(pw.TableRow(children: [
+            _cell(svcName, ttf),
+            _cell(startDate, ttf, align: pw.TextAlign.center),
+            _cell(endDate, ttf, align: pw.TextAlign.center),
+            _cell(days, ttf, align: pw.TextAlign.center),
+          ]));
+        }
+        widgets.add(pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(3),
+            1: pw.FlexColumnWidth(2),
+            2: pw.FlexColumnWidth(2),
+            3: pw.FlexColumnWidth(1.5),
+          },
+          children: svcRows,
+        ));
+        widgets.add(pw.SizedBox(height: 14));
+
+        // Financial Summary
+        widgets.add(pw.Text('Financial Summary',
+            style: pw.TextStyle(font: ttfBold, fontSize: 11)));
+        widgets.add(pw.Divider(thickness: 0.8, color: PdfColors.grey500));
+        widgets.add(pw.SizedBox(height: 4));
+
+        widgets.add(pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(3),
+            1: pw.FlexColumnWidth(2),
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFFF3F4F6)),
+              children: [
+                _cell('Description', ttfBold, isHeader: true),
+                _cell('Amount', ttfBold,
+                    isHeader: true, align: pw.TextAlign.right),
+              ],
+            ),
+            if (showSubscriptionDetails) ...[
+              pw.TableRow(children: [
+                _cell('Subtotal (Original)', ttf),
+                _cell(origTotal.toStringAsFixed(2), ttf,
+                    align: pw.TextAlign.right),
+              ]),
+              pw.TableRow(children: [
+                _cell('Tax Amount (Original)', ttf),
+                _cell(origTax.toStringAsFixed(2), ttf,
+                    align: pw.TextAlign.right),
+              ]),
+            ],
+            pw.TableRow(children: [
+              _cell('Taxable Amount', ttf),
+              _cell(revisedTaxable.toStringAsFixed(2), ttf,
+                  align: pw.TextAlign.right),
+            ]),
+            pw.TableRow(children: [
+              _cell('Tax Amount', ttf),
+              _cell(revisedTax.toStringAsFixed(2), ttf,
+                  align: pw.TextAlign.right),
+            ]),
+            pw.TableRow(children: [
+              _cell('Total Amount', ttfBold),
+              _cell(revisedTotal.toStringAsFixed(2), ttfBold,
+                  align: pw.TextAlign.right),
+            ]),
+            if (showSubscriptionDetails) ...[
+              pw.TableRow(children: [
+                _cell('Total Paid', ttf),
+                _cell(totalPaid.toStringAsFixed(2), ttf,
+                    align: pw.TextAlign.right),
+              ]),
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFFFF7ED)),
+                children: [
+                  _cell('Balance Due', ttfBold),
+                  _cell(balanceDue.toStringAsFixed(2), ttfBold,
+                      align: pw.TextAlign.right),
+                ],
+              ),
+            ],
+          ],
+        ));
+        widgets.add(pw.SizedBox(height: 14));
+
+        // Bank Details
+        if (bank.isNotEmpty) {
+          widgets.add(pw.Text('Bank Details:',
+              style: pw.TextStyle(font: ttfBold, fontSize: 10)));
+          widgets.add(pw.SizedBox(height: 6));
+          widgets.add(pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    _bankLine('Bank Name', bank['bankname'], ttf, ttfBold),
+                    _bankLine('A/C Number', bank['accountnumber'], ttf,
+                        ttfBold),
+                    _bankLine('Branch Name', bank['branchname'], ttf,
+                        ttfBold),
+                    _bankLine('Branch Address', bank['branchaddress'], ttf,
+                        ttfBold),
+                  ],
+                ),
+              ),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    _bankLine('A/C Holder', bank['accountholdername'], ttf,
+                        ttfBold),
+                    _bankLine('IFSC Code', bank['ifsccode'], ttf, ttfBold),
+                    _bankLine('MICR Code', bank['micrcode'], ttf, ttfBold),
+                  ],
+                ),
+              ),
+            ],
+          ));
+          widgets.add(pw.SizedBox(height: 16));
+        }
+
+        // Authorized Signatory
+        widgets.add(pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                if (digisignImage != null)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 4),
+                    child: pw.Image(digisignImage,
+                        width: 80, height: 40, fit: pw.BoxFit.contain),
+                  )
+                else
+                  pw.SizedBox(height: 28),
+                pw.Text('For $userName',
+                    style: pw.TextStyle(
+                        font: ttf, fontSize: 9,
+                        fontStyle: pw.FontStyle.italic,
+                        color: PdfColors.grey700)),
+                pw.Text('Authorized Signature',
+                    style: pw.TextStyle(font: ttfBold, fontSize: 9)),
+              ],
+            ),
+          ],
+        ));
+
+        return widgets;
+      },
+      footer: (pw.Context ctx) {
+        final footerAddr =
+            header['address']?.toString().isNotEmpty == true
+                ? header['address'].toString()
+                : 'HippoCloud Technologies Pvt. Ltd.';
+        return pw.Container(
+          decoration: const pw.BoxDecoration(
+              border:
+                  pw.Border(top: pw.BorderSide(color: PdfColors.grey300))),
+          padding:
+              const pw.EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(userName,
+                  style: pw.TextStyle(
+                      font: ttf, fontSize: 7, color: PdfColors.grey600)),
+              pw.Expanded(
+                child: pw.Text(footerAddr,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                        font: ttf,
+                        fontSize: 7,
+                        color: PdfColors.grey600)),
+              ),
+              pw.Text(
+                  'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+                  style: pw.TextStyle(
+                      font: ttf, fontSize: 7, color: PdfColors.grey600)),
+            ],
+          ),
+        );
+      },
+    ));
+
+    return doc.save();
+  }
+
+  static String _fmt(dynamic raw) {
+    if (raw == null) return '—';
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == 'null') return '—';
+    try {
+      final dt = DateTime.parse(s);
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    } catch (_) {}
+    return s;
+  }
+
+  static pw.Widget _infoLine(
+          String label, String value, pw.Font ttf, pw.Font ttfBold) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+        child: pw.RichText(
+          text: pw.TextSpan(children: [
+            pw.TextSpan(
+                text: '$label: ',
+                style: pw.TextStyle(
+                    font: ttfBold, fontSize: 9, color: PdfColors.grey800)),
+            pw.TextSpan(
+                text: value,
+                style: pw.TextStyle(
+                    font: ttf, fontSize: 9, color: PdfColors.grey900)),
+          ]),
+        ),
+      );
+
+  static pw.Widget _cell(String text, pw.Font font,
+          {bool isHeader = false,
+          pw.TextAlign align = pw.TextAlign.left}) =>
+      pw.Padding(
+        padding:
+            const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+        child: pw.Text(text,
+            textAlign: align,
+            style: pw.TextStyle(
+                font: font,
+                fontSize: isHeader ? 9 : 8,
+                color: isHeader ? PdfColors.grey800 : PdfColors.grey700)),
+      );
+
+  static pw.Widget _bankLine(
+          String label, dynamic value, pw.Font ttf, pw.Font ttfBold) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.RichText(
+          text: pw.TextSpan(children: [
+            pw.TextSpan(
+                text: '$label: ',
+                style: pw.TextStyle(
+                    font: ttfBold, fontSize: 9,
+                    color: PdfColors.grey800)),
+            pw.TextSpan(
+                text: value?.toString() ?? '—',
+                style: pw.TextStyle(
+                    font: ttf, fontSize: 9, color: PdfColors.grey900)),
+          ]),
         ),
       );
 }

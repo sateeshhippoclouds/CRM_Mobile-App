@@ -5187,13 +5187,13 @@ class _FollowupActionsDialogState extends State<_FollowupActionsDialog> {
     try {
       final bytes = await _FollowupPdfGenerator.generate(item,
           showBreakdown: showBreakdown);
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
         name: 'Quote - ${item['lead_name'] ?? 'PDF'}',
       );
     } catch (e) {
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('PDF preview error: $e'),
           backgroundColor: const Color(0xffDC2626)));
@@ -5215,10 +5215,10 @@ class _FollowupActionsDialogState extends State<_FollowupActionsDialog> {
           (item['lead_name']?.toString() ?? 'quote').replaceAll(' ', '_');
       final file = File('${dir.path}/quote_$leadName.pdf');
       await file.writeAsBytes(bytes);
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       await Share.shareXFiles([XFile(file.path)], text: 'Quote PDF');
     } catch (e) {
-      SmartDialog.dismiss();
+      await SmartDialog.dismiss();
       sm.showSnackBar(SnackBar(
           content: Text('Download error: $e'),
           backgroundColor: const Color(0xffDC2626)));
