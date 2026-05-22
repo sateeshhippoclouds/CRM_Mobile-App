@@ -14,8 +14,24 @@ import '../models/token_response_model.dart';
 class HippoAuthService {
   static const String _baseUrl = 'https://www.hippocx.com';
   static const String _tokenKey = 'hippo_auth_token';
-  static const String _userKey = 'hippo_auth_user';
   static const String _permissionsKey = 'hippo_permissions';
+
+  // Fallback tokens used until the backend /auth/login returns a real token.
+  static const String _ceoFallbackToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoic2F0ZWVzaCIsImVtYWlsIjoic2F0ZWVzaEBoaXBwb2Nsb3Vkcy5jb20iLCJyb2xlIjoiQ0VPIiwiY29tcGFueWlkIjoiaGlwcG8iLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwicGxhdGZvcm1fb3duZXIiOnRydWUsInVzZXJfdHlwZSI6ImNlb190YWJsZSIsImlhdCI6MTc3NjY4MzI5MCwiZXhwIjoxODA4MjE5MjkwfQ.8vJSu9AGKg8uGurDINA2OdoMeAsBY6s8Ma1FLwu7BuM';
+  static const String _companyFallbackToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
+      'eyJuYW1lIjoiaGVtYW50aCIsImVtYWlsIjoic2FpcGFybGE0M0BnbWFpbC5jb20iLCJyb2xlIjoiY2VvIiwiY29tcGFueWlkIjoxLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwidXNlcl90eXBlIjoiY29tcGFueSIsImlhdCI6MTc3NjQxODc3NywiZXhwIjoxODA3OTU0Nzc3fQ.'
+      'n3VOmrhMGQbsrjH_7xabhklrp7z_cUQ6WeZyLNvJ6qY';
+  static const String _employeeFallbackToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiUHJpeWEgVmVybWEiLCJlbWFpbCI6InByaXlhLnZlcm1hQGNvbXBhbnkuY29tIiwicm9sZSI6IkFkbWluIiwiY29tcGFueWlkIjoxLCJpZCI6MiwiZW1wbG95ZWVpZCI6MiwiYWN0aXZpdHlzdGF0dXMiOnRydWUsInVzZXJfdHlwZSI6ImVtcGxveWVlIiwiaWF0IjoxNzc4MjIwMjQxLCJleHAiOjE4MDk3NTYyNDF9.tuUg_KpIQttn7XUgr4LOPrez79kF546eZg2JQELwbj0';
+
+  static String _fallbackToken(String message) {
+    if (message.contains('CEO')) return _ceoFallbackToken;
+    if (message.contains('Company')) return _companyFallbackToken;
+    if (message.contains('Employee')) return _employeeFallbackToken;
+    return _ceoFallbackToken;
+  }
   static const _timeout = Duration(seconds: 15);
 
   // Counts concurrent in-flight requests; listen to show/hide global loaders.
@@ -23,23 +39,6 @@ class HippoAuthService {
   ValueNotifier<int> get loadingNotifier => _activeRequests;
   bool get isLoading => _activeRequests.value > 0;
 
-  static const String _ceoStaticToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoic2F0ZWVzaCIsImVtYWlsIjoic2F0ZWVzaEBoaXBwb2Nsb3Vkcy5jb20iLCJyb2xlIjoiQ0VPIiwiY29tcGFueWlkIjoiaGlwcG8iLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwicGxhdGZvcm1fb3duZXIiOnRydWUsInVzZXJfdHlwZSI6ImNlb190YWJsZSIsImlhdCI6MTc3NjY4MzI5MCwiZXhwIjoxODA4MjE5MjkwfQ.8vJSu9AGKg8uGurDINA2OdoMeAsBY6s8Ma1FLwu7BuM';
-
-  static const String _companyStaticToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
-      'eyJuYW1lIjoiaGVtYW50aCIsImVtYWlsIjoic2FpcGFybGE0M0BnbWFpbC5jb20iLCJyb2xlIjoiY2VvIiwiY29tcGFueWlkIjoxLCJhY3Rpdml0eXN0YXR1cyI6dHJ1ZSwidXNlcl90eXBlIjoiY29tcGFueSIsImlhdCI6MTc3NjQxODc3NywiZXhwIjoxODA3OTU0Nzc3fQ.'
-      'n3VOmrhMGQbsrjH_7xabhklrp7z_cUQ6WeZyLNvJ6qY';
-
-  static const String _employeeStaticToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiUHJpeWEgVmVybWEiLCJlbWFpbCI6InByaXlhLnZlcm1hQGNvbXBhbnkuY29tIiwicm9sZSI6IkFkbWluIiwiY29tcGFueWlkIjoxLCJpZCI6MiwiZW1wbG95ZWVpZCI6MiwiYWN0aXZpdHlzdGF0dXMiOnRydWUsInVzZXJfdHlwZSI6ImVtcGxveWVlIiwiaWF0IjoxNzc4MjIwMjQxLCJleHAiOjE4MDk3NTYyNDF9.tuUg_KpIQttn7XUgr4LOPrez79kF546eZg2JQELwbj0';
-
-  static String _staticTokenFor(String message) {
-    if (message.contains('CEO')) return _ceoStaticToken;
-    if (message.contains('Company')) return _companyStaticToken;
-    if (message.contains('Employee')) return _employeeStaticToken;
-    return _ceoStaticToken;
-  }
 
   Future<TokenResponseModel> login(String email, String password) async {
     try {
@@ -72,14 +71,15 @@ class HippoAuthService {
 
       final loginData = jsonDecode(loginRes.body) as Map<String, dynamic>;
       final message = loginData['message']?.toString() ?? '';
-      final token = (loginData['token'] as String?) ?? _staticTokenFor(message);
+      // Use backend token when available; fall back to test token until backend is ready.
+      final token = (loginData['token'] as String?)?.isNotEmpty == true
+          ? loginData['token'] as String
+          : _fallbackToken(message);
 
       debugPrint('token: $token');
 
-      // Build user from login payload if present, else decode JWT locally.
-      final user = loginData.containsKey('payload')
-          ? TokenResponseModel.fromJson(loginData)
-          : _localDecode(token);
+      // Decode user data directly from the JWT payload (like reading a cookie).
+      final user = _localDecode(token);
 
       debugPrint('── USER DATA ──────────────────────────');
       debugPrint('name       : ${user.name}');
@@ -90,11 +90,11 @@ class HippoAuthService {
       debugPrint('exp        : ${user.exp}');
       debugPrint('platformOwner : ${user.platformOwner}');
 
+      // Store only the token — all user data is decoded from it on demand.
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, token);
-      await prefs.setString(_userKey, user.encode());
 
-      debugPrint('Stored user in SharedPreferences ✓');
+      debugPrint('Token stored in SharedPreferences ✓');
 
       // Fetch role permissions for non-CEO users
       if (!user.platformOwner) {
@@ -123,8 +123,10 @@ class HippoAuthService {
   Future<TokenResponseModel?> getStoredUser() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final user = TokenResponseModel.decode(prefs.getString(_userKey));
-      if (user == null) return null;
+      final token = prefs.getString(_tokenKey);
+      if (token == null || token.isEmpty) return null;
+      // Decode all user data directly from the stored JWT (like reading a cookie).
+      final user = _localDecode(token);
       if (user.isExpired) {
         await logout();
         return null;
@@ -155,20 +157,15 @@ class HippoAuthService {
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final user = TokenResponseModel.fromJson(data);
-
-        debugPrint('── USER DATA ──────────────────────────');
-        debugPrint('name       : ${user.name}');
-        debugPrint('email      : ${user.email}');
-        debugPrint('role       : ${user.role}');
-        debugPrint('companyid  : ${user.companyId}');
-        debugPrint('user_type  : ${user.userType}');
-        debugPrint('exp        : ${user.exp}');
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_userKey, user.encode());
-        debugPrint('User stored in SharedPreferences ✓');
-        return user;
+        // If backend returns a fresh token, store it; otherwise keep existing.
+        final freshToken = data['token'] as String?;
+        if (freshToken != null && freshToken.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_tokenKey, freshToken);
+          debugPrint('Fresh token stored in SharedPreferences ✓');
+        }
+        // Decode user from the stored token.
+        return getStoredUser();
       }
     } catch (e) {
       debugPrint('verifyAndStoreUser error: $e');
@@ -193,7 +190,6 @@ class HippoAuthService {
       final prefs = await SharedPreferences.getInstance();
       await Future.wait([
         prefs.remove(_tokenKey),
-        prefs.remove(_userKey),
         prefs.remove(_permissionsKey),
       ]);
     } catch (_) {}
