@@ -1871,38 +1871,59 @@ class HippoAuthService {
   }
 
   Future<void> postCallRecord(Map<String, dynamic> data) async {
-    final res = await authenticatedRequest(
-      '/calls',
-      method: 'POST',
-      body: data,
-    );
+    final companyId = await _getCompanyId();
+    if (companyId == null) throw Exception('Company ID not found.');
+    // Backend expects 'companyid' (not 'company_id')
+    final body = {...data, 'companyid': companyId};
+    debugPrint('── POST /calls ────────────────────────');
+    debugPrint('  phone_number  : ${body['phone_number']}');
+    debugPrint('  contact_name  : ${body['contact_name']}');
+    debugPrint('  contact_id    : ${body['contact_id']}');
+    debugPrint('  contact_type  : ${body['contact_type']}');
+    debugPrint('  lead_id       : ${body['lead_id']}');
+    debugPrint('  client_id     : ${body['client_id']}');
+    debugPrint('  call_status   : ${body['call_status']}');
+    debugPrint('  duration_secs : ${body['duration_seconds']}');
+    debugPrint('  companyid     : ${body['companyid']}');
+    debugPrint('  employee_id   : ${body['employee_id']}');
+    debugPrint('  employee_name : ${body['employee_name']}');
+    final res = await authenticatedRequest('/calls', method: 'POST', body: body);
+    debugPrint('  Status  : ${res.statusCode}');
+    debugPrint('  Body    : ${res.body}');
     if (res.statusCode != 200 && res.statusCode != 201) {
       throw Exception(_parseMessage(res.body));
     }
   }
 
-  Future<List<Map<String, dynamic>>> getCallHistory(
-      Map<String, String> params) async {
+  Future<Map<String, dynamic>> getCallHistory(Map<String, String> params) async {
     final companyId = await _getCompanyId();
     if (companyId == null) throw Exception('Company ID not found.');
     final qp = {'companyid': companyId.toString(), ...params};
+    debugPrint('── GET /calls ─────────────────────────');
+    debugPrint('  Params: $qp');
     final res = await authenticatedRequest('/calls', queryParams: qp);
+    debugPrint('  Status: ${res.statusCode}');
+    debugPrint('  Body  : ${res.body.length > 600 ? '${res.body.substring(0, 600)}…' : res.body}');
     if (res.statusCode != 200) throw Exception(_parseMessage(res.body));
-    final body = jsonDecode(res.body);
-    if (body is List) {
-      return body
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+    final decoded = jsonDecode(res.body);
+    // Backend returns { columns, data: [...rows...], totalrows: [{totalusers: N}] }
+    List<Map<String, dynamic>> rows = [];
+    int total = 0;
+    if (decoded is List) {
+      rows = decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      total = rows.length;
+    } else if (decoded is Map) {
+      final list = decoded['data'] ?? decoded['calls'] ?? decoded['records'] ?? [];
+      if (list is List) {
+        rows = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      final totalRows = decoded['totalrows'];
+      if (totalRows is List && totalRows.isNotEmpty) {
+        total = int.tryParse(totalRows[0]['totalusers']?.toString() ?? '0') ?? 0;
+      }
     }
-    final list = body['calls'] ?? body['data'] ?? body['records'] ?? [];
-    if (list is List) {
-      return list
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    }
-    return [];
+    debugPrint('  Rows fetched: ${rows.length}, total: $total');
+    return {'rows': rows, 'total': total};
   }
 
   Map<String, dynamic> _decodeJwtPayload(String token) {

@@ -266,6 +266,11 @@ class _CompanyDrawerState extends State<_CompanyDrawer> {
                       label: 'Leads',
                       onTap: () =>
                           _navigate(context, const CompanyLeadsView())),
+                _NavItem(
+                    icon: Icons.phone_in_talk_rounded,
+                    label: 'Telecalling',
+                    onTap: () =>
+                        _navigate(context, const CallTestView())),
                 if (widget.model.canViewClients)
                   _NavItem(
                       icon: Icons.people_rounded,

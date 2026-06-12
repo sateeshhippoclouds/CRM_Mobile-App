@@ -36,6 +36,9 @@ class CallRecord {
         'contact_name': contactName,
         'contact_id': contactId,
         'contact_type': contactType,
+        // Explicit typed ID fields so the backend can identify without checking contact_type.
+        if (contactType == 'lead') 'lead_id': contactId,
+        if (contactType == 'client') 'client_id': contactId,
         'start_time': startTime.toIso8601String(),
         'duration_seconds': durationSeconds,
         'call_status': callStatus,

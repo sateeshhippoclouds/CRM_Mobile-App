@@ -24,6 +24,7 @@ class CallService {
   DateTime? _callStartTime;
 
   bool get hasPendingCall => _pendingNumber != null;
+  DateTime? get callStartTime => _callStartTime;
 
   // Prevents concurrent calls to resolveAfterResume() from saving duplicates.
   bool _isResolving = false;
@@ -65,6 +66,32 @@ class CallService {
       _clearPending();
       return false;
     }
+  }
+
+  /// Called once at app startup. If Android killed the app during a long call
+  /// (e.g. 2-3 hours), the pending call data is still in SharedPreferences.
+  /// This resolves that data and returns the record so the caller can POST it.
+  /// Returns null if there was no pending call or if a live CallButton widget
+  /// is already tracking it (in-memory _pendingNumber is set).
+  Future<CallRecord?> checkAndResolveOnStartup({
+    String? companyId,
+    String? employeeId,
+    String? employeeName,
+  }) async {
+    // If an active widget is already handling this call, skip.
+    if (_pendingNumber != null) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pendingKey);
+    if (raw == null) return null;
+
+    debugPrint('CallService.checkAndResolveOnStartup: '
+        'pending call found from previous session — resolving');
+    return resolveAfterResume(
+      companyId: companyId,
+      employeeId: employeeId,
+      employeeName: employeeName,
+    );
   }
 
   /// Called when the app resumes after a phone call.
@@ -123,19 +150,35 @@ class CallService {
       Iterable<CallLogEntry> allEntries = const [];
       List<CallLogEntry> entries = [];
 
-      for (int attempt = 0; attempt < 2; attempt++) {
-        if (attempt == 1) await Future.delayed(const Duration(seconds: 2));
+      // 3 attempts: 1s / 2s / 3s gaps.
+      // Break early ONLY when a COMPLETE entry is found:
+      //   - duration > 0  (call was answered and OS has written the duration)
+      //   - OR type is missed/rejected (0-duration is correct for these)
+      // If only a 0-duration outgoing entry is present, the OS hasn't flushed
+      // the duration yet — keep retrying.
+      for (int attempt = 0; attempt < 3; attempt++) {
+        final delays = [1, 2, 3];
+        await Future.delayed(Duration(seconds: delays[attempt]));
         try {
           allEntries = await CallLog.query();
-          entries =
-              allEntries.where((e) => (e.timestamp ?? 0) >= from).toList();
+          entries = allEntries.where((e) => (e.timestamp ?? 0) >= from).toList();
           debugPrint('CallService attempt $attempt: '
               'total=${allEntries.length} inWindow=${entries.length}');
           for (final e in entries) {
-            debugPrint('  num=${e.number} dur=${e.duration} '
-                'type=${e.callType} ts=${e.timestamp}');
+            debugPrint('  num=${e.number}  dur=${e.duration}s  '
+                'type=${e.callType}  ts=${e.timestamp}');
           }
-          if (entries.isNotEmpty) break;
+          if (entries.isEmpty) continue; // nothing yet, retry
+          // Check if any entry is complete (duration written or definitive type)
+          final hasComplete = entries.any((e) =>
+              (e.duration ?? 0) > 0 ||
+              e.callType == CallType.missed ||
+              e.callType == CallType.rejected);
+          if (hasComplete) {
+            debugPrint('CallService: complete entry found on attempt $attempt');
+            break;
+          }
+          debugPrint('CallService: entries found but duration=0 — retrying…');
         } catch (e) {
           debugPrint('CallService: CallLog.query error: $e');
           break;
@@ -166,11 +209,24 @@ class CallService {
         }
       }
 
-      debugPrint('CallService: chosen = num=${best?.number} '
-          'dur=${best?.duration} type=${best?.callType}');
+      // Pass 3 — fallback: most recent entry with highest duration in window
+      if (best == null && entries.isNotEmpty) {
+        debugPrint('CallService: fallback — picking highest-duration entry');
+        best = entries.reduce((a, b) =>
+            (a.duration ?? 0) >= (b.duration ?? 0) ? a : b);
+      }
+
+      debugPrint('── CallService: FINAL ENTRY ───────────────');
+      debugPrint('  number   : ${best?.number}');
+      debugPrint('  duration : ${best?.duration}s');
+      debugPrint('  callType : ${best?.callType}');
+      debugPrint('  timestamp: ${best?.timestamp}');
 
       if (best != null) {
         final dur = best.duration ?? 0;
+        final status = _statusFromType(best.callType, dur);
+        debugPrint('  → callStatus : $status');
+        debugPrint('  → durationSec: $dur');
         record = CallRecord(
           phoneNumber: number,
           contactName: contactName,
@@ -179,7 +235,7 @@ class CallService {
           startTime: DateTime.fromMillisecondsSinceEpoch(
               best.timestamp ?? startTime.millisecondsSinceEpoch),
           durationSeconds: dur,
-          callStatus: _statusFromType(best.callType, dur),
+          callStatus: status,
           companyId: companyId,
           employeeId: employeeId,
           employeeName: employeeName,
@@ -296,7 +352,10 @@ class CallService {
       final ts = e.timestamp ?? 0;
       if (ts < fromMs) continue;
       if (_last10(e.number ?? '') == target) {
-        if (best == null || ts > (best.timestamp ?? 0)) best = e;
+        // Prefer entry with higher duration (most complete record wins).
+        final betterDuration = (e.duration ?? 0) > (best?.duration ?? 0);
+        final sameOrNewerTime = ts >= (best?.timestamp ?? 0);
+        if (best == null || betterDuration || (sameOrNewerTime && (best.duration ?? 0) == 0)) best = e;
       }
     }
     return best;

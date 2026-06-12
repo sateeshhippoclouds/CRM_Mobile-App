@@ -7,6 +7,7 @@ import '../../../../app/utils.dart';
 import '../../../../models/permissions_model.dart';
 import '../../../../models/token_response_model.dart';
 import '../../../../services/api_services.dart';
+import '../../../../services/call_service.dart';
 
 class CompanyDashboardViewModel extends BaseViewModel {
   final _auth = locator<HippoAuthService>();
@@ -178,6 +179,26 @@ class CompanyDashboardViewModel extends BaseViewModel {
     await _fetchLogoUrl();
     await loadDashboard();
     setBusy(false);
+    // Fire-and-forget: resolve any call that was pending when Android killed
+    // the app (e.g. during a 2-3 hour call). Does nothing if no pending call.
+    _resolvePendingCallOnStartup();
+  }
+
+  Future<void> _resolvePendingCallOnStartup() async {
+    try {
+      final record = await CallService.instance.checkAndResolveOnStartup(
+        companyId:    _user?.companyId?.toString(),
+        employeeId:   _user?.employeeId?.toString(),
+        employeeName: _user?.name,
+      );
+      if (record != null) {
+        await _auth.postCallRecord(record.toJson());
+        debugPrint('Dashboard: pending call from previous session posted — '
+            '${record.callStatus} ${record.durationSeconds}s');
+      }
+    } catch (e) {
+      debugPrint('Dashboard._resolvePendingCallOnStartup error: $e');
+    }
   }
 
   Future<void> loadDashboard() async {

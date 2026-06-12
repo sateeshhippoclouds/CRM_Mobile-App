@@ -43,9 +43,10 @@ class _CallHistoryViewState extends State<CallHistoryView> {
       if (user?.employeeId != null) {
         params['employeeid'] = user!.employeeId.toString();
       }
-      final raw = await _api.getCallHistory(params);
+      final result = await _api.getCallHistory(params);
+      final rows = List<Map<String, dynamic>>.from(result['rows'] as List);
       setState(() {
-        _records = raw.map(CallRecord.fromJson).toList();
+        _records = rows.map(CallRecord.fromJson).toList();
         _loading = false;
       });
     } catch (e) {
